@@ -30,7 +30,7 @@ use Getopt::Long;
 my %OPTIONS;
 
 #### Process options
-GetOptions(\%OPTIONS,"build_id:i");
+GetOptions(\%OPTIONS,"build_id:i", "respect");
 my $build_id = $OPTIONS{build_id} || die "need build_id\n";
 my $build_path = get_build_path( build_id => $build_id );
 my ($organism, $organism_id) = getBuildOrganism( build_id => $build_id );
@@ -43,7 +43,7 @@ $fh->autoflush;
 
 ##Build Overview
 print "getting build_overview table\n";
-get_build_overview ($fh, $build_id );
+get_build_overview ($fh, $build_id, $build_path );
 
 print "getting what_is_new table\n";
 my ($what_is_new, $new_sample_ids) = $atlas->get_what_is_new($build_id, 1);
@@ -98,7 +98,7 @@ if ($ptm_coverage){
 print "getting Experiment Contribution table\n";
 my $exp_contrib_table = get_sample_info( $build_id );
 foreach my $row (@$exp_contrib_table){
-  if ($organism !~ /(human|Arabidopsis|Maize|Bburgdorferi|mouse)/i){
+  if ($organism !~ /(human|Arabidopsis|Maize|Bburgdorferi|mouse|Canine|coli)/i){
 		 pop @$row;
 		 pop @$row;
   } 
@@ -132,7 +132,7 @@ if ($organism =~ /Bburgdorferi/i){
   my $sql = qq~
 		SELECT NeXtProt_Mapping_id, chromosome, PeptideAtlas_Category 
 		FROM $TBAT_NEXTPROT_CHROMOSOME_MAPPING
-    WHERE NeXtProt_Mapping_id in (89, 90,91,92)
+    WHERE NeXtProt_Mapping_id in (94,95,96,97)
     ORDER BY chromosome
 	 ~;
 #			SELECT top $limit NM.id
@@ -144,10 +144,10 @@ if ($organism =~ /Bburgdorferi/i){
   my @result = $sbeams->selectSeveralColumns($sql);
   my %data = ();
   my %ncmid2borreliaIso=(
-    89 => 'B31',
-    90 => 'MM1',
-    91 => 'B31-5A4',
-    92 => 'JD1'
+    94 => 'B31',
+    95 => 'MM1',
+    96 => 'B31-5A4',
+    97 => 'JD1'
   );
   foreach my $row (@result){
      my ($id, $chr,$PAcat) = @$row;
@@ -177,7 +177,7 @@ if ($organism =~ /Bburgdorferi/i){
 
 print $fh "\n";
 
-if ($organism =~ /(human|Arabidopsis|Maize|Bburgdorferi|mouse)/i){ 
+if ($organism =~ /(human|Arabidopsis|Maize|Bburgdorferi|mouse|Canine|coli)/i){ 
 
   print "getting plot Peptide Identification by Sample Category data\n";
 
@@ -357,7 +357,8 @@ sub get_build_plots {
 sub get_build_overview {
   my $fh = shift;
   my $build_id = shift;
-  
+  my $build_path = shift;
+ 
   my $build_info = $sbeams->selectrow_hashref( <<"  BUILD" );
   SELECT atlas_build_name, probability_threshold, atlas_build_description, 
   build_date, set_name, protpro_PSM_FDR_per_expt
@@ -367,6 +368,17 @@ sub get_build_overview {
   AND AB.record_status <> 'D'
   BUILD
 
+
+  ## check if mayu output available
+  if ( -e "$build_path/analysis/Mayu_out.csv" ) {
+     my $line = `tail -1 "$build_path/analysis/Mayu_out.csv"`;
+     if ($line){
+			 my @elms = split(",", $line);
+			 $build_info->{'Build PSM FDR'} = sprintf("%.5f" , $elms[2]);
+			 $build_info->{'Build peptide FDR'} = sprintf("%.4f", $elms[12]);
+       $build_info->{'Build protein FDR'}  = sprintf("%.4f", $elms[18]);
+     }
+  }
 #  for my $k ( keys( %$build_info ) ) { print STDERR "$k => $build_info->{$k}\n"; }
   my $build_name = $build_info->{atlas_build_name};
   my $phospho_info;
@@ -430,10 +442,56 @@ sub get_build_overview {
           AND B.BIOSEQUENCE_NAME NOT LIKE 'CONTAM%' 
   PEP
 
-
+  my ($pep_count_respect,$mod_pep_count_respect);
+  if ($OPTIONS{respect}){
+#		my $pep_count_respect = $sbeams->selectrow_hashref( <<"		PEP" );
+#		SELECT COUNT(DISTINCT PI.PEPTIDE_INSTANCE_ID) cnt
+#		FROM (
+#      SELECT A.PEPTIDE_INSTANCE_ID, STRING_AGG(CONVERT(NVARCHAR(max),ISNULL(S.chimera_level,'1')), ',') as level 
+#			FROM $TBAT_PEPTIDE_INSTANCE PI
+#			JOIN $TBAT_PEPTIDE_MAPPING PM ON (PM.peptide_instance_id = PI.peptide_instance_id)
+#			JOIN $TBAT_MODIFIED_PEPTIDE_INSTANCE MPI ON ( PI.peptide_instance_id = MPI.peptide_instance_id )
+#			JOIN $TBAT_SPECTRUM_IDENTIFICATION SI ON ( MPI.modified_peptide_instance_id = SI.modified_peptide_instance_id )
+#			JOIN $TBAT_SPECTRUM S ON ( SI.spectrum_id = S.spectrum_id )
+#			JOIN $TBAT_BIOSEQUENCE B ON  (B.BIOSEQUENCE_ID = PM.MATCHED_BIOSEQUENCE_ID)
+#			WHERE 1=1
+#      AND ATLAS_BUILD_ID= $build_id 
+#      AND B.BIOSEQUENCE_NAME NOT LIKE 'DECOY%'
+#      AND B.BIOSEQUENCE_NAME NOT LIKE 'CONTAM%'
+#      GROUP BY PI.PEPTIDE_INSTANCE_ID
+#		)A
+#    WHERE A.level not like '%1%'
+#		PEP
+    $pep_count_respect = $sbeams->selectrow_hashref( <<"   PEP" );
+    SELECT COUNT(DISTINCT A.PEPTIDE_INSTANCE_ID) cnt
+    FROM (
+      SELECT DISTINCT PI.PEPTIDE_INSTANCE_ID
+      FROM $TBAT_PEPTIDE_INSTANCE PI
+      JOIN $TBAT_MODIFIED_PEPTIDE_INSTANCE MPI ON ( PI.peptide_instance_id = MPI.peptide_instance_id )
+      JOIN $TBAT_SPECTRUM_IDENTIFICATION SI ON ( MPI.modified_peptide_instance_id = SI.modified_peptide_instance_id )
+      JOIN $TBAT_SPECTRUM S ON ( SI.spectrum_id = S.spectrum_id )
+      WHERE 1=1
+      AND PI.ATLAS_BUILD_ID= $build_id
+      AND S.chimera_level > 1
+      AND PI.PEPTIDE_INSTANCE_ID not in
+      ( SELECT distinct PI2.PEPTIDE_INSTANCE_ID
+				FROM $TBAT_PEPTIDE_INSTANCE PI2
+				JOIN $TBAT_MODIFIED_PEPTIDE_INSTANCE MPI2 ON ( PI2.peptide_instance_id = MPI2.peptide_instance_id )
+				JOIN $TBAT_SPECTRUM_IDENTIFICATION SI2 ON ( MPI2.modified_peptide_instance_id = SI2.modified_peptide_instance_id )
+				JOIN $TBAT_SPECTRUM S2 ON ( SI2.spectrum_id = S2.spectrum_id )
+				WHERE 1=1
+				AND PI2.ATLAS_BUILD_ID= $build_id
+				AND (S2.chimera_level is null or S2.chimera_level = 1)
+      )
+    )A
+   PEP
+  }  
   my $smpl_count = $sbeams->selectrow_hashref( <<"  SMPL" );
-  SELECT COUNT(*) cnt FROM $TBAT_ATLAS_BUILD_SAMPLE 
+  SELECT COUNT(*) cnt 
+  FROM $TBAT_ATLAS_SEARCH_BATCH ASB 
+  JOIN $TBAT_ATLAS_BUILD_SEARCH_BATCH ABSB ON (ASB.atlas_search_batch_id = ABSB.atlas_search_batch_id )
   WHERE atlas_build_id = $build_id
+  AND ASB.record_status = 'N'
   SMPL
 
   my $dataset_count = $sbeams->selectrow_hashref( <<"  DATASET" );
@@ -474,12 +532,21 @@ sub get_build_overview {
   print $fh "build_overview|smpl_count\t$smpl_count->{cnt}\n";
   print $fh "build_overview|dataset_count\t$dataset_count->{cnt}\n";
   print $fh "build_overview|n_runs\t$dataset_count->{n_runs}\n";
-  print $fh "build_overview|protpro_PSM_FDR_per_expt\t$build_info->{protpro_PSM_FDR_per_expt}\n";
+  print $fh "build_overview|protpro_PSM_FDR_per_expt\t$build_info->{protpro_PSM_FDR_per_expt}\n"
+             if ($build_info->{protpro_PSM_FDR_per_expt});
+  print $fh "build_overview|Build PSM FDR\t$build_info->{'Build PSM FDR'}\n"
+             if ($build_info->{'Build PSM FDR'});
+  print $fh "build_overview|Build peptide FDR\t$build_info->{'Build peptide FDR'}\n"
+             if ($build_info->{'Build peptide FDR'});
+  print $fh "build_overview|Build protein FDR\t$build_info->{'Build protein FDR'}\n"
+             if ($build_info->{'Build protein FDR'});
+
   print $fh "build_overview|probability_threshold\t$build_info->{probability_threshold}\n";
   print $fh "build_overview|n_searched_spectra\t$dataset_count->{n_searched_spectra}\n";
   #print $fh "build_overview|n_good_spectra\t$dataset_count->{n_good_spectra}\n";
   print $fh "build_overview|pep_count_obs\t$pep_count->{obs}\n";
   print $fh "build_overview|pep_count_cnt\t$pep_count->{cnt}\n";
+  print $fh "build_overview|pep_count_respect\t$pep_count_respect->{cnt}\n" if ($pep_count_respect);
   print $fh "build_overview|modpep_count\t$mod_pep_count->{cnt}\n";
 
   foreach my $key (sort {$a cmp $b} keys %prot_count){
@@ -559,6 +626,8 @@ sub get_sample_info {
   JOIN PROTEOMICS.DBO.PROTEOMICS_EXPERIMENT PE ON (PE.EXPERIMENT_ID = PSB.EXPERIMENT_ID)
   LEFT JOIN PROTEOMICS.DBO.INSTRUMENT I ON (I.INSTRUMENT_ID = PE.INSTRUMENT_ID) 
   WHERE ABSB.atlas_build_id = $build_id
+  AND ASB.record_status != 'D'
+  AND ABSB.record_status != 'D'
   ORDER BY rownum, cumulative_n_peptides, ABSB.atlas_build_search_batch_id ASC
   ~;
   my @sample_info = $sbeams->selectSeveralColumns ( $sql );
@@ -831,8 +900,10 @@ sub get_dataset_protein_info_old {
     SELECT S.SAMPLE_ID, S.REPOSITORY_IDENTIFIERS, ABSB.ATLAS_BUILD_SEARCH_BATCH_ID
     FROM $TBAT_SAMPLE  S
     JOIN $TBAT_ATLAS_BUILD_SEARCH_BATCH ABSB ON (S.sample_id = ABSB.sample_id)
+    JOIN $TBAT_ATLAS_SEARCH_BATCH ASB ON (ASB.ATLAS_SEARCH_BATCH_ID = ABSB.ATLAS_SEARCH_BATCH_id)
     WHERE REPOSITORY_IDENTIFIERS IS NOT NULL
     AND ABSB.atlas_build_id = $atlas_build_id
+    AND ASB.record_status != 'D'
     AND REPOSITORY_IDENTIFIERS != ''
   ~;
 
@@ -853,7 +924,9 @@ sub get_dataset_protein_info_old {
     $join = qq~
      JOIN $TBAT_ATLAS_BUILD_SEARCH_BATCH ABSB
      ON (ABSB.ATLAS_BUILD_SEARCH_BATCH_ID = BIABSB.ATLAS_BUILD_SEARCH_BATCH_ID)
+     JOIN $TBAT_ATLAS_SEARCH_BATCH ASB ON (ASB.ATLAS_SEARCH_BATCH_ID = ABSB.ATLAS_SEARCH_BATCH_id)
      WHERE ABSB.atlas_build_id = $atlas_build_id
+     AND ASB.record_status != 'D'
     ~;
   }
   $sql = qq~

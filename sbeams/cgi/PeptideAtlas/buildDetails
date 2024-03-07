@@ -340,6 +340,9 @@ sub get_table_help {
                  { key => 'Build Date', value => 'Date upon which build was finished. ' },
                  { key => 'Probability threshold', value => 'iProphet probability threshold applied to each experiment in this build' },
                  { key => 'PSM FDR threshold', value => 'PSM (peptide-spectrum match) level FDR threshold applied to each experiment in this build' },
+                 { key => 'Build PSM FDR', value=>'MAYU PSM level FDR'},
+                 { key => 'Build peptide FDR', value=>'MAYU peptide level FDR'},
+                 { key => 'Build protein FDR', value=>'MAYU protein level FDR'},
                  { key => '# Datasets', value => 'The number of individual datasets which comprise this build.' } ,
                  { key => '# Experiments', value => 'The number of individual experiments which comprise this build.  Each experiment contains one or more LCMS/MS runs, and generally corresponds to a single scientific experiment.' } ,
                  { key => '# MS Runs', value => 'The total number of MS runs for the build.' } ,
@@ -713,8 +716,17 @@ sub build_overview_html {
   $table .= $atlas->encodeSectionItem( key   => 'PSM FDR threshold', tr_info => $tr,
 				       value => $build_info->{protpro_PSM_FDR_per_expt}, align => 'right' ) . "\n";
   $table .= $atlas->encodeSectionItem( key   => 'Probability threshold', tr_info => $tr,
-				       value => $build_info->{probability_threshold}, align => 'right' ) . "\n";
+				       value => $build_info->{probability_threshold}, align => 'right' ) . "\n" 
+                if ($build_info->{probability_threshold} ne 'na');
+  if ($build_info->{'Build PSM FDR'}){
+    $table .= $atlas->encodeSectionItem( key   => 'Build PSM FDR', tr_info => $tr,
+               value => $build_info->{'Build PSM FDR'}, align => 'right' ) . "\n";
+    $table .= $atlas->encodeSectionItem( key   => 'Build peptide FDR', tr_info => $tr,
+               value => $build_info->{'Build peptide FDR'}, align => 'right' ) . "\n";
+    $table .= $atlas->encodeSectionItem( key   => 'Build protein FDR', tr_info => $tr,
+               value => $build_info->{'Build protein FDR'}, align => 'right' ) . "\n";
 
+	}
   if ($build_info->{n_searched_spectra}){
     $table .= $atlas->encodeSectionItem( key   => '# Searched Spectra', tr_info => $tr,
                value => $build_info->{n_searched_spectra}, align => 'right' ) . "\n"
