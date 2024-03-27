@@ -1083,8 +1083,28 @@ sub handle_request {
       ) PROT 
 		~;
   }
-  $sql .= "LEFT JOIN ($is_keratin_or_immunoglobulin_sql)IS_KER_IG ON (IS_KER_IG.biosequence_id = PROT.biosequence_id)";
   
+  if ($parameters{sample_category_id} ){
+    my $sample_category_clause = $sbeams->parseConstraint2SQL(
+			constraint_column=>"S.sample_category_id",
+			constraint_type=>"int_list",
+			constraint_name=>"Sample Category",
+			constraint_value=>$parameters{sample_category_id} );
+    return if ($sample_category_clause eq '-1');
+		$sql .= qq~
+      JOIN ( 
+          SELECT DISTINCT BIABSB.BIOSEQUENCE_ID
+					FROM $TBAT_BIOSEQUENCE_ID_ATLAS_BUILD_SEARCH_BATCH BIABSB
+					JOIN $TBAT_ATLAS_BUILD_SEARCH_BATCH ABSB 
+						ON (ABSB.ATLAS_BUILD_SEARCH_BATCH_ID = BIABSB.ATLAS_BUILD_SEARCH_BATCH_ID)
+					JOIN $TBAT_SAMPLE S ON (S.sample_id = ABSB.sample_id)
+          WHERE 1=1
+					$sample_category_clause
+			) SAMPLE_CAT_OBS ON (SAMPLE_CAT_OBS.BIOSEQUENCE_ID = PROT.BIOSEQUENCE_ID)
+		~;
+  }
+  $sql .= "LEFT JOIN ($is_keratin_or_immunoglobulin_sql)IS_KER_IG ON (IS_KER_IG.biosequence_id = PROT.biosequence_id)";
+
   $sql .= qq~
      ORDER BY
         group_number,
@@ -1188,7 +1208,7 @@ sub handle_request {
                   'Organism' => 1,
   );
   if ($atlas_build_id != 575){
-    $hidden_cols{'n_distinct_synpeptides'} =1;
+    $hidden_cols{'N Distinct Synthetic Peptides'} =1;
   }
   
   if($atlas_build_name =~/Origene/i){
