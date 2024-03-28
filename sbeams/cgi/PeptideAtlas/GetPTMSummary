@@ -505,7 +505,7 @@ sub handle_request {
                              "&biosequence_name=\%$colnameidx{biosequence_name}V".
                              "&ptm_type=\%$colnameidx{ptm_type}V&residue=\%$colnameidx{residue}V".
                              "&apply_action=QUERY";
-
+    $url_cols{'nP.80-.95'} = "$get_ptm_spec_url&min=0.80&max=0.95";
     $url_cols{'nP.95-.99'} = "$get_ptm_spec_url&min=0.95&max=0.99";
     $url_cols{'nP.99-1'} = "$get_ptm_spec_url&min=0.99";
     $url_cols{'no-choice'} = "$get_ptm_spec_url&nochoice=1";
