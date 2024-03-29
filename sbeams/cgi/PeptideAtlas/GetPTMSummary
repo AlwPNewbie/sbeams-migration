@@ -202,6 +202,7 @@ sub handle_request {
     $parameters{input_form_format} = "minimum_detail";
     $parameters{presence_level_constraint} = "1";
   }
+
 	#### Display the user-interaction input form
 	$sbeams->display_input_form(
 		TABLE_NAME=>$TABLE_NAME,
@@ -533,14 +534,6 @@ sub handle_request {
 			my %write_params = ( rs_table => $TBAT_ATLAS_BUILD,
 													 key_field => 'atlas_build_id',
 													 key_value => $parameters{atlas_build_id} );
-			#### Post process the resultset
-			postProcessResultset(
-				rs_params_ref=>\%rs_params,
-				resultset_ref=>$resultset_ref,
-				query_parameters_ref=>\%parameters,
-				column_titles_ref=>\@column_titles,
-        show_redundant_prot=> $show_redundant_prot,
-			);
 			$sbeams->writeResultSet(
 				resultset_file_ref=>\$rs_params{set_name},
 				resultset_ref=>$resultset_ref,
@@ -549,6 +542,14 @@ sub handle_request {
 				query_name=>"$SBEAMS_SUBDIR/$PROG_NAME",
 				column_titles_ref=>\@column_titles,
 				%write_params
+			);
+			#### Post process the resultset
+			postProcessResultset(
+				rs_params_ref=>\%rs_params,
+				resultset_ref=>$resultset_ref,
+				query_parameters_ref=>\%parameters,
+				column_titles_ref=>\@column_titles,
+        show_redundant_prot=> $show_redundant_prot,
 			);
 
     }
@@ -683,7 +684,6 @@ sub postProcessResultset {
 		$proteome_component =~ /^(.*),(.*)$/;
 		my $source_type = $1;
 		my @patterns = split(/;/, $2);
-
 		my @data=();
 		for (my $i=0; $i<$n_rows; $i++) {
 			my $biosequence_name = $resultset_ref->{data_ref}->[$i]->[$cols->{biosequence_name}];

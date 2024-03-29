@@ -1663,7 +1663,7 @@ sub generate_html_from_file {
 		if ($colnames{$ptm_type}{$i} =~ /nP(\.\d+)\-([\.\d]+)/){
 		  my $xlabel = '';
 		  if ($2 != 1){
-		    $xlabel = "0$1<=nP>0$2";
+		    $xlabel = "0$1<=nP<0$2";
 		  }else{
 		    $xlabel = "nP>=0$1";
 		  }
