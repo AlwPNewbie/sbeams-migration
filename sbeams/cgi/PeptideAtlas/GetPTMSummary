@@ -524,11 +524,27 @@ sub handle_request {
 	     use_tabbed_panes=> '1',
       )if ($show_sql);
       #### Fetch the results from the database server
+      my $use_caching = (defined $parameters{use_caching}) ? $parameters{use_caching} : 1;
+      #### Fetch the results from the database server
       $sbeams->fetchResultSet(
         sql_query=>$sql,
         resultset_ref=>$resultset_ref,
-        use_caching => 1, 
+        query_parameters_ref=>\%parameters,
+        use_caching => $use_caching, 
       );
+     
+      if ($resultset_ref->{from_cache}){
+        $log->info( "Skipping post-processing with cached RS" );
+      }else{
+				#### Post process the resultset
+				postProcessResultset(
+					rs_params_ref=>\%rs_params,
+					resultset_ref=>$resultset_ref,
+					query_parameters_ref=>\%parameters,
+					column_titles_ref=>\@column_titles,
+					show_redundant_prot=> $show_redundant_prot,
+				);
+      } 
 			#### Store the resultset and parameters to disk resultset cache
 			$rs_params{set_name} = "SETME";
 			my %write_params = ( rs_table => $TBAT_ATLAS_BUILD,
@@ -543,61 +559,53 @@ sub handle_request {
 				column_titles_ref=>\@column_titles,
 				%write_params
 			);
-			#### Post process the resultset
-			postProcessResultset(
-				rs_params_ref=>\%rs_params,
-				resultset_ref=>$resultset_ref,
-				query_parameters_ref=>\%parameters,
-				column_titles_ref=>\@column_titles,
-        show_redundant_prot=> $show_redundant_prot,
-			);
 
     }
-			my $obs_help = $sbeamsMOD->get_table_help(column_titles_ref=>\@column_titles); 
-      #### Display the resultset
-      $sbeams->displayResultSet(
-				resultset_ref=>$resultset_ref,
-				query_parameters_ref=>\%parameters,
-				rs_params_ref=>\%rs_params,
-				url_cols_ref=>\%url_cols,
-				hidden_cols_ref=>\%hidden_cols,
-				max_widths=>\%max_widths,
-				use_tabbed_panes => 1,
-				column_titles_ref=>\@column_titles,
-				column_help=>$obs_help,
-				base_url=>$base_url,
-			);
+		my $obs_help = $sbeamsMOD->get_table_help(column_titles_ref=>\@column_titles); 
+		#### Display the resultset
+		$sbeams->displayResultSet(
+			resultset_ref=>$resultset_ref,
+			query_parameters_ref=>\%parameters,
+			rs_params_ref=>\%rs_params,
+			url_cols_ref=>\%url_cols,
+			hidden_cols_ref=>\%hidden_cols,
+			max_widths=>\%max_widths,
+			use_tabbed_panes => 1,
+			column_titles_ref=>\@column_titles,
+			column_help=>$obs_help,
+			base_url=>$base_url,
+		);
 
 
-			#### Display the resultset controls
-			$sbeams->displayResultSetControls(
-				resultset_ref=>$resultset_ref,
-				query_parameters_ref=>\%parameters,
-				rs_params_ref=>\%rs_params,
-				base_url=>$base_url,
-				use_tabbed_panes=>'1',
-			);
-			#### Display a plot of data from the resultset
-			$sbeams->displayResultSetPlot_plotly(
-				rs_params_ref=>\%rs_params,
-				resultset_ref=>$resultset_ref,
-				query_parameters_ref=>\%parameters,
-				column_titles_ref=>\@column_titles,
-				use_tabbed_panes => 1,
-				mouseover_column => 'peptide_sequence',
-				mouseover_url => $url_cols{'Peptide Sequence'},
-				mouseover_tag => '%1V',
-				base_url=>$base_url,
-			);
+		#### Display the resultset controls
+		$sbeams->displayResultSetControls(
+			resultset_ref=>$resultset_ref,
+			query_parameters_ref=>\%parameters,
+			rs_params_ref=>\%rs_params,
+			base_url=>$base_url,
+			use_tabbed_panes=>'1',
+		);
+		#### Display a plot of data from the resultset
+		$sbeams->displayResultSetPlot_plotly(
+			rs_params_ref=>\%rs_params,
+			resultset_ref=>$resultset_ref,
+			query_parameters_ref=>\%parameters,
+			column_titles_ref=>\@column_titles,
+			use_tabbed_panes => 1,
+			mouseover_column => 'peptide_sequence',
+			mouseover_url => $url_cols{'Peptide Sequence'},
+			mouseover_tag => '%1V',
+			base_url=>$base_url,
+		);
 
    #### If QUERY was not selected, then tell the user to enter some parameters
-   } else {
+  } else {
      if ($sbeams->invocation_mode() eq 'http') {
       print "<H4>Select parameters above and press QUERY</H4>\n";
      } else {
       print "You need to supply some parameters to constrain the query\n";
      }
-   }
+  }
 
 } # end handle_request
 
