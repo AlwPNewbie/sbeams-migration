@@ -356,18 +356,48 @@ sub handle_request {
       base_url=>$base_url,
     );
 
-    #### Display a plot of data from the resultset
-    $sbeams->displayResultSetPlot_plotly(
-      rs_params_ref=>\%rs_params,
-      resultset_ref=>$resultset_ref,
-      query_parameters_ref=>\%parameters,
-      column_titles_ref=>\@column_titles,
-      use_tabbed_panes => 1,
-      mouseover_column => 'peptide_sequence',
-      mouseover_url => $url_cols{'Peptide Sequence'},
-      mouseover_tag => '%1V',
-      base_url=>$base_url,
-    );
+#    #### Display a plot of data from the resultset
+#    $sbeams->displayResultSetPlot_plotly(
+#      rs_params_ref=>\%rs_params,
+#      resultset_ref=>$resultset_ref,
+#      query_parameters_ref=>\%parameters,
+#      column_titles_ref=>\@column_titles,
+#      use_tabbed_panes => 1,
+#      mouseover_column => 'peptide_sequence',
+#      mouseover_url => $url_cols{'Peptide Sequence'},
+#      mouseover_tag => '%1V',
+#      base_url=>$base_url,
+#    );
+    print qq~
+    <script src="../../usr/javascript/ptm/ptm.js"></script>
+    <script>
+			const tempSpan = document.createElement('span');
+			tempSpan.textContent = 'A';
+			tempSpan.className = 'char';
+			tempSpan.style.visibility = 'hidden'; // Make the element invisible
+			document.body.appendChild(tempSpan); // Append to the body to get the correct width
+			const letterheight = tempSpan.getBoundingClientRect().height;
+			const letterwidth = tempSpan.getBoundingClientRect().width;
+			document.body.removeChild(tempSpan); // Remove the temporary element
+
+			function ptm_pep_html() {
+				const table = document.getElementById('TBL');
+				const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+				const columnIndex = 9;
+				const tempSpan = document.createElement('span');
+				for (let k = 1; k < rows.length; k++) {
+					const cell = rows[k].getElementsByTagName('td')[columnIndex];
+					const ptm_sequence = cell.innerText;
+					cell.innerText = '';
+					var pep_with_bars = show_prob_bars(ptm_sequence,barcolor='#ff5f00',label='ptmprob=',letterheight,letterwidth);
+					cell.appendChild(pep_with_bars);
+				}
+			}
+			// Call the function when the document is loaded
+			document.addEventListener('DOMContentLoaded', ptm_pep_html);
+		 </script> 
+   ~;
+
   }else{
     if ($sbeams->invocation_mode() eq 'http') {
       print "<H4>Select parameters above and press QUERY</H4>\n";
@@ -375,7 +405,6 @@ sub handle_request {
       print "You need to supply some parameters to contrain the query\n";
     }
   }
-
  }
 #
 #			my $spectra_display = $sbeamsMOD->get_individual_spectra_display( 
