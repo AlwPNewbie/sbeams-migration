@@ -1673,7 +1673,7 @@ sub get_individual_spectra_display {
   foreach my $row (@{$resultset_ref->{data_ref}}){
     my @tmp =();
     foreach my $col (sort {$colnameidx_ref->{$a} <=> $colnameidx_ref->{$b}} keys %$colnameidx_ref){
-       if (not defined $hidden_cols_ref->{$col}){
+       if (! $hidden_cols_ref->{$col}){
          push @tmp, $row->[$colnameidx_ref->{$col}];
          push @headings, $column_titles_ref->[$colnameidx_ref->{$col}] if ($loop==1);
        }
@@ -3903,13 +3903,6 @@ sub display_spectra_ptm_table {
       .tabcontent {
         border-top: none;
       }
-			.ptm_ll {background:red; font-weight: bold; opacity: 0.5}
-			.ptm_ml {background:orange;  font-weight: bold; opacity: 0.5}
-			.ptm_l {background:purple; font-weight: bold; opacity: 0.5}
-			.ptm_m {background:grey;  font-weight: bold; opacity: 0.5}
-			.ptm_h {background:#007eca; font-weight: bold; opacity: 0.5}
-			.ptm_mh {background:skyblue; font-weight: bold; opacity: 0.5}
-			.ptm_hh {background:green; font-weight: bold; opacity: 0.5}
 		 </style>
 		 ~;
 	#$spectraHTML = $sbeams->getPopupDHTML();
@@ -3928,8 +3921,9 @@ sub display_spectra_ptm_table {
     }
 
 		$resultset_ref->{data_ref} = \@data;
-    delete $hidden_cols_ref->{'ptm_lability'};
-
+    $hidden_cols_ref->{'ptm_lability'} = 0;
+    $hidden_cols_ref->{'ptm_sequence'} = 0;
+    #$hidden_cols_ref->{'ptm_norm_info_gain'} = 0;
 		my $spectra_display = $self->get_individual_spectra_display(
 			column_titles_ref=>$column_titles_ref,
 			colnameidx_ref => $colnameidx_ref,
@@ -3982,42 +3976,6 @@ sub display_spectra_ptm_table {
       for (var k=0; k<indiv_spec.length; k++) {
 				var rows = indiv_spec[k].getElementsByTagName('TR');
 				var j=3;
-				while (j< rows.length) {
-					var aas = rows[j].cells[0].innerHTML.split('\\)');
-					var newInnerHTML = '';
-					var re;
-				 for (var i=0; i < aas.length; i++){
-						if (aas[i].match(/\\([01]\\./g)){
-							var aa = aas[i].split(/\\((?=[01]\\.)/);
-							var prob = parseFloat(aa[1]);
-              aa[1].replace('(','\\(', 'g');
-
-							re =  new RegExp('(\\\\w)(\\\\[[^\\\\]]+\\\\])?\\\\('+ aa[1],  "g");
-							if (prob < 0.01 ){
-								aas[i] = aas[i].replace(re, '<span onmouseover="showTooltip(event,'+ aa[1] +')" onmouseout="hideTooltip()" class="ptm_ll">\$1</span>\$2');
-							} else if (prob >=0.01 && prob < 0.05){
-								aas[i] = aas[i].replace(re, '<span onmouseover="showTooltip(event,'+ aa[1] +')" onmouseout="hideTooltip()" class="ptm_ml">\$1</span>\$2');
-							} else if (prob >= 0.05 && prob < 0.19 ){
-								aas[i] = aas[i].replace(re, '<span onmouseover="showTooltip(event,'+ aa[1] +')" onmouseout="hideTooltip()" class="ptm_l">\$1</span>\$2');
-							} else if (prob >= 0.19 && prob < 0.81 ){
-								aas[i] = aas[i].replace(re, '<span onmouseover="showTooltip(event,'+ aa[1] +')" onmouseout="hideTooltip()" class="ptm_m">\$1</span>\$2');
-							} else if (prob >= 0.81 && prob < 0.95 ){
-								aas[i] = aas[i].replace(re, '<span onmouseover="showTooltip(event,'+ aa[1] +')" onmouseout="hideTooltip()" class="ptm_h">\$1</span>\$2');
-							} else if (prob >= 0.95 && prob < 0.99 ){
-								aas[i] = aas[i].replace(re, '<span onmouseover="showTooltip(event,'+ aa[1] +')" onmouseout="hideTooltip()" class="ptm_mh">\$1</span>\$2');
-							} else {
-								aas[i] = aas[i].replace(re, '<span onmouseover="showTooltip(event,'+ aa[1] +')" onmouseout="hideTooltip()" class="ptm_hh">\$1</span>\$2');
-							}
-							newInnerHTML += aas[i] ;
-						} else {
-							newInnerHTML += aas[i];
-						}
-					}
-					re = new RegExp('(\\\\[[^\\\\]]+\\\\])', "g");
-					newInnerHTML = newInnerHTML.replace (re, "<span class='aa_mod'>\$1</span>");
-					rows[j].cells[0].innerHTML = newInnerHTML;
-					j++;
-				}
       }
 		</script>
   ~;

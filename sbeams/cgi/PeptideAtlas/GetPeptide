@@ -1361,6 +1361,7 @@ sub handle_request {
       my @column_titles = ();
       my @column_array = (
 				["modpep", "modified_peptide_sequence", "Modified Sequence"],
+				["ptm_sequence", "SPI.ptm_sequence","PTM Sequence"],
 				["chg", "MPI.peptide_charge","Charge"],
 				["sample_id", "SMP.sample_id","Expt"],
 				["instrument_name", "I.instrument_name","Instr"],
@@ -1374,13 +1375,14 @@ sub handle_request {
 				["precursor_intensity", "S.precursor_intensity", "Precursor Intensity (x10^6)"],
 				["scan_time", "scan_time", "RT"],
 				["collision_energy","collision_energy", "CE"],
-				["ptm_sequence", "SPI.ptm_sequence","PTM Sequence"],
 				["sal_prob", "COUNT(SAL.level_probability)","SAL Prob"],
 				["sample_tag", "SMP.sample_tag", "Experiment Tag"],
 				["total_ion_current", "S.total_ion_current", "TIC (x10^6)"],
 				["signal_to_noise", "S.signal_to_noise", "S/N"],
         ["ptm_type", "SPI.ptm_type","PTM Type"],
         ["ptm_lability","SPI.ptm_lability", "PTM Lability"],
+        #["ptm_norm_info_gain", "SPI.ptm_norm_info_gain", "PTM Normalized Information Content"],
+
       );
       my $columns_clause = $sbeams->build_SQL_columns_list(
 				column_array_ref=>\@column_array,
@@ -1479,7 +1481,6 @@ sub handle_request {
 						 content => $spectraHTML )
 	  if $htmlmode;
 
-
       #############################################################################
       #### PTM Spectra
       #############################################################################
@@ -1491,6 +1492,45 @@ sub handle_request {
            resultset_ref=> $resultset_ref,
            hidden_cols_ref=>\%hidden_cols,
            ptm_score_summary_ref => \%ptm_score_summary );
+
+					print qq~
+					<script src="../../usr/javascript/ptm/ptm.js"></script>
+					<script>
+						const tempSpan = document.createElement('span');
+						tempSpan.textContent = 'A';
+						tempSpan.className = 'char';
+						tempSpan.style.visibility = 'hidden'; // Make the element invisible
+						document.body.appendChild(tempSpan); // Append to the body to get the correct width
+						const letterheight = tempSpan.getBoundingClientRect().height;
+						const letterwidth = tempSpan.getBoundingClientRect().width;
+						document.body.removeChild(tempSpan); // Remove the temporary element
+
+						function ptm_pep_html() {
+							const tables = document.getElementsByClassName('ptm_spectra');
+              for (let i = 0; i < tables.length; i++) {
+                const table = tables[i];
+								const rows = table.getElementsByTagName('tr');
+								const columnIndex = 1;
+								for (let k = 0; k < rows.length; k++) {
+									const cells = rows[k].getElementsByTagName('td');
+                  if (cells.length != 13 && cells.length != 14 ){
+                    continue;
+                  }
+                  cell = cells[columnIndex];
+									const ptm_sequence = cell.innerText;
+									cell.innerText = '';
+									var pep_with_bars = show_prob_bars(ptm_sequence,barcolor='#ff5f00',label='ptmprob=',letterheight,letterwidth);
+									cell.appendChild(pep_with_bars);
+								}
+              }
+						}
+						// Call the function when the document is loaded
+						document.addEventListener('DOMContentLoaded', ptm_pep_html);
+					 </script>
+				 ~;
+
+
+
 			}
 
       ## LM: did not verify new L&F of this section -- ToDo
@@ -1718,8 +1758,11 @@ sub postProcessResultset {
   my $hidden_cols = $args{'hidden_cols'};
   my $ptm_score_summary_ref = $args{'ptm_score_summary_ref'};
   my $ptm_peps_ref = $args{'ptm_peps_ref'};
+  my $cols = $resultset_ref->{column_hash_ref};
+
 	#--------------------------------------------------
 	# 0 modified_peptide_sequence
+	#   ptm_sequence
 	# 1 MPI.peptide_charge
 	# 2 SMP.sample_id
 	# 3 I.instrument_name
@@ -1745,34 +1788,36 @@ sub postProcessResultset {
 
   # First few $blah_idx variables refer both to query results
   # and column of results table
-  my $mseq_idx = 0;      # modified peptide sequence
-  my $chrg_idx = 1;      # charge
-  my $smpl_idx = 2;      # sample
-  my $inst_idx = 3;      # instrument
-  my $prob_idx = 4;      # probability
-  my $name_idx = 5;      # spectrum name: mzML basename, scan, scan, chrg
-  my $ann_idx  = 6;      # avg user annotation value
-  my $frag_idx = 7;      # 
-  my $spec_idx = 8;      # link to spectrum display
-  my $chrm_idx = 9;      # chromatogram.
-  my $chimera_idx = 10;
+  my $mseq_idx = $cols->{modpep};      # modified peptide sequence
+  my $chrg_idx = $cols->{chg};      # charge
+  my $smpl_idx = $cols->{sample_id};      # sample
+  my $inst_idx = $cols->{instrument_name};      # instrument
+  my $prob_idx = $cols->{probability};      # probability
+  my $name_idx = $cols->{spectrum_name};      # spectrum name: mzML basename, scan, scan, chrg
+  my $ann_idx  = $cols->{avg_prob};      # avg user annotation value
+  my $frag_idx = $cols->{frg_type};      # 
+  my $spec_idx = $cols->{spectrum};      # link to spectrum display
+  my $chrm_idx = $cols->{chromatogram};      # chromatogram.
+  my $chimera_idx = $cols->{chimera_level};
+
 
 
   # The remaining $blah_idx variables refer to optional columns
   # of the results table,
   # These columns are deleted in loop below if they are not to be displayed.
-  my $it_idx = 11;        # precursor intensity
-  my $rt_idx = 12;        # retention time
-  my $ce_idx = 13;        # collision energy
+  my $it_idx = $cols->{precursor_intensity};        # precursor intensity
+  my $rt_idx = $cols->{scan_time};        # retention time
+  my $ce_idx = $cols->{collision_energy};        # collision energy
   
   # not displayed result 
-  my $ptm_idx = 14;       # ptm sequence
-  my $ann_count_idx = 15; # n user annotations
-  my $sample_tag_idx = 16;   
-  my $tic_idx = 17;
-  my $sn_idx = 18; 
-  my $ptm_type_idx = 19;
-  my $ptm_lability_idx = 20;
+  my $ptm_idx = $cols->{ptm_sequence};       # ptm sequence
+  my $ann_count_idx = $cols->{sal_prob}; # n user annotations
+  my $sample_tag_idx = $cols->{sample_tag};   
+  my $tic_idx = $cols->{total_ion_current};
+  my $sn_idx = $cols->{signal_to_noise};
+  my $ptm_type_idx = $cols->{ptm_type};
+  my $ptm_lability_idx = $cols->{ptm_lability};
+  #my $ptm_norm_info_gain_idx = $cols->{ptm_norm_info_gain};
 	my @display_peps;
 	my $at_least_one_chromatogram = 0;
 	my $at_least_one_chimera =0;
@@ -1892,12 +1937,12 @@ sub postProcessResultset {
     my @ptm_pep =();
     if ($pep->[$ptm_idx]){
       $pep->[$ptm_type_idx] =~ /^(\w+):.*/;
-      my $ptm_residues=$1; 
-      foreach my $i (0..10){
-				push @ptm_pep, $pep->[$i];
+      my $ptm_residues=$1;
+      push @ptm_pep, $pep->[0]; 
+      foreach my $i (2..11){
+				$ptm_pep[$i] = $pep->[$i];
       }
       my $ptm_sequence = $pep->[$ptm_idx];
-      my $new_modified_pepseq = '';
       my %mods = ();
       my %ptm_score = ();
 
@@ -1959,11 +2004,11 @@ sub postProcessResultset {
 						$ptm_score_summary_ref->{$pep->[$ptm_type_idx]}{$pos}{obshh}++;
 					} elsif($score >= 0.95 && $score < 0.99 ){
 						$ptm_score_summary_ref->{$pep->[$ptm_type_idx]}{$pos}{obsmh}++;
-					} elsif ($score >= 0.81 && $score < 0.95){
+					} elsif ($score >= 0.80 && $score < 0.95){
 						$ptm_score_summary_ref->{$pep->[$ptm_type_idx]}{$pos}{obsh}++;
-					} elsif($score >= 0.19 && $score < 0.81 ){
+					} elsif($score >= 0.20 && $score < 0.80 ){
 						$ptm_score_summary_ref->{$pep->[$ptm_type_idx]}{$pos}{obsm}++;
-					} elsif($score >= 0.05 && $score < 0.19){
+					} elsif($score >= 0.05 && $score < 0.20){
 						$ptm_score_summary_ref->{$pep->[$ptm_type_idx]}{$pos}{obsl}++;
 					} elsif($score >= 0.01 && $score < 0.05){
 						$ptm_score_summary_ref->{$pep->[$ptm_type_idx]}{$pos}{obsml}++;
@@ -1973,25 +2018,10 @@ sub postProcessResultset {
 				}
 				$pos++;
       }
-      
-      $modified_pepseq =~ s/\[[^\]]+\]//g;
-			$modified_pepseq =~ s/\-//g;
-      my @aas = split(//, $modified_pepseq);
-
-      for(my $i=0; $i<=$#aas; $i++){
-				if(defined $mods{$i} && defined $ptm_score{$i}){
-					$new_modified_pepseq .= "$aas[$i]\[$mods{$i}\]($ptm_score{$i})";
-				} elsif(defined $mods{$i} && not defined $ptm_score{$i}){
-					$new_modified_pepseq .= "$aas[$i]\[$mods{$i}\]";
-				} elsif(defined $ptm_score{$i} && not defined $mods{$i}){
-					$new_modified_pepseq .= "$aas[$i]($ptm_score{$i})";
-				} else {
-					$new_modified_pepseq .= $aas[$i];
-				}
-      }
-      $ptm_pep[$mseq_idx] = $new_modified_pepseq; 
+      $ptm_pep[$ptm_idx] = $pep->[$ptm_idx];
       $ptm_pep[$frag_idx] = $pep->[$frag_idx];
       $ptm_pep[$ptm_lability_idx] =  $pep->[$ptm_lability_idx];
+      #$ptm_pep[$ptm_norm_info_gain_idx] = $pep->[$ptm_norm_info_gain_idx];
     }
     
     $pep->[$it_idx] = ( $pep->[$it_idx] ) ?  sprintf("%.2f", $pep->[$it_idx]/1000000) : $sbeams->makeInactiveText('n/a'); 
@@ -2034,6 +2064,7 @@ sub postProcessResultset {
   $hidden_cols->{'sal_prob'} = 1;
   $hidden_cols->{'sample_tag'} = 1;
   $hidden_cols->{'ptm_lability'} = 1;
+  #$hidden_cols->{'ptm_norm_info_gain'} = 1;
 }
 
 sub get_protein_mapping_widget {
