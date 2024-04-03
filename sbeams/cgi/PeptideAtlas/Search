@@ -196,17 +196,17 @@ sub handle_request {
     if($apply_action =~ /VIEWRESULT/ and ! $search_type_param{single_table}){
 
       for my $row ( @{$resultset_ref->{data_ref}} ) {
-	my $match_string = $row->[8];
-	if($match_string =~ /exact/){
-	  push(@{$exact_resultset{data_ref}},$row); 
-	}else{
-	  push(@{$fuzzy_resultset{data_ref}}, $row);
-	}      
+				my $match_string = $row->[8];
+				if($match_string =~ /exact/){
+					push(@{$exact_resultset{data_ref}},$row); 
+				}else{
+					push(@{$fuzzy_resultset{data_ref}}, $row);
+				}      
       }
       foreach my $k ( keys %{$resultset_ref}){
-	next if($k eq 'data_ref');
-	$exact_resultset{$k} = $resultset_ref->{$k};
-	$fuzzy_resultset{$k} = $resultset_ref->{$k};
+				next if($k eq 'data_ref');
+				$exact_resultset{$k} = $resultset_ref->{$k};
+				$fuzzy_resultset{$k} = $resultset_ref->{$k};
       }
     }
   }
@@ -437,7 +437,7 @@ sub handle_request {
   $exact_search_key =~ s/\s+$//;
 
   my $search_key_clause = $sbeams->parseConstraint2SQL(
-    constraint_column=>"search_key_name",
+    constraint_column=>"SKE.search_key_name",
     constraint_type=>"plain_text",
     constraint_name=>"Search Key",
     constraint_value=>$exact_search_key,
@@ -483,10 +483,13 @@ sub handle_request {
     ["resource_url","SKL.resource_url","resource_url"],
     ["organism_id","O.organism_id","organism_id"],
     ["organism_name","O.organism_name","organism_name"],
-    ["presence_level","PROTLEVEL.presence_level", "Protein Level"]
+    ["presence_level","PROTLEVEL.presence_level", "Protein Level"],
+    ["resource_gene_name","SKE_GENE.resource_gene_name", "Gene Name"],
+    ["resource_gene_symbol","SKE_GENE.resource_gene_symbol", "Gene Symbol"],
+    ["search_key_id", "SKE.search_key_id", "search_key_id"],
   );
 
-  push @column_array, ["match_string","'exact_match'", "match_string"];
+  push @column_array, ["match_type","'exact_match'", "match_type"];
 
   #### Build the columns part of the SQL statement
   my %colnameidx = ();
@@ -499,8 +502,8 @@ sub handle_request {
 
   ## all any search for sequence search 
   my $select_sql;
-  if (($parameters{sequence} =~/on/i || $parameters{exact_match} =~ /on/i || $parameters{accession} =~ /on/i ) &&
-       $parameters{organism_name}=~ /any/i){
+  if (($parameters{sequence} =~/on/i || $parameters{exact_match} =~ /on/i || $parameters{accession} =~ /on/i || 
+       $parameters{identifier} =~ /on/i ) && $parameters{organism_name}=~ /any/i){
     # skip protein level query  
     # use all build
     my $build_id_sql = qq~
@@ -587,17 +590,25 @@ sub handle_request {
 									AND BRT.biosequence_relationship_type_id IN ( 1,2 )
 				 )
 				 ~;
-
 		$select_sql = qq~
 				 SELECT DISTINCT TOP 501 $columns_clause
-					 FROM $TBAT_SEARCH_KEY_LINK SKL
-					 LEFT JOIN  $TBAT_SEARCH_KEY_ENTITY SKE 
-								ON (SKL.RESOURCE_NAME = SKE.RESOURCE_NAME) 
-					 JOIN $TB_ORGANISM O ON (O.ORGANISM_ID = SKL.ORGANISM_ID)
-										$atlas_build_clause
-					 JOIN $TBAT_ATLAS_BUILD AB ON (AB.ATLAS_BUILD_ID = DAB.ATLAS_BUILD_ID)
-					 LEFT JOIN ($proteinlevel_sql) AS PROTLEVEL
-						ON (PROTLEVEL.BIOSEQUENCE_NAME = SKL.RESOURCE_NAME and SKL.atlas_build_id = PROTLEVEL.atlas_build_id)
+				 FROM $TBAT_SEARCH_KEY_LINK SKL
+				 LEFT JOIN  $TBAT_SEARCH_KEY_ENTITY SKE 
+							ON (SKL.RESOURCE_NAME = SKE.RESOURCE_NAME) 
+				 JOIN $TB_ORGANISM O ON (O.ORGANISM_ID = SKL.ORGANISM_ID)
+									$atlas_build_clause
+				 JOIN $TBAT_ATLAS_BUILD AB ON (AB.ATLAS_BUILD_ID = DAB.ATLAS_BUILD_ID)
+				 LEFT JOIN ($proteinlevel_sql) AS PROTLEVEL
+					ON (PROTLEVEL.BIOSEQUENCE_NAME = SKL.RESOURCE_NAME and SKL.atlas_build_id = PROTLEVEL.atlas_build_id)
+				 LEFT JOIN (
+					 SELECT DISTINCT SKE2.RESOURCE_NAME, 
+					 MAX(CASE WHEN SKE2.SEARCH_KEY_TYPE='GENE NAME' THEN SKE2.SEARCH_KEY_NAME ELSE NULL END) AS RESOURCE_GENE_NAME,
+					 MAX(CASE WHEN SKE2.SEARCH_KEY_TYPE='UNIPROTKB_SYMBOL' THEN SKE2.SEARCH_KEY_NAME ELSE NULL END) AS RESOURCE_GENE_SYMBOL
+					 FROM $TBAT_SEARCH_KEY_ENTITY SKE2
+					 WHERE SKE2.SEARCH_KEY_TYPE = 'GENE NAME' OR SKE2.SEARCH_KEY_TYPE = 'UNIPROTKB_SYMBOL' 
+           GROUP BY SKE2.RESOURCE_NAME
+				 ) AS SKE_GENE
+				 ON (SKE_GENE.RESOURCE_NAME = SKL.RESOURCE_NAME)
 			 ~;
    }
 	 my $where_clause = qq~
@@ -607,6 +618,7 @@ sub handle_request {
 					AND SKL.atlas_build_id IN ( $atlas_build_ids )
 			 ORDER BY search_key_name
 	 ~;
+
 	 $sql = $select_sql.$where_clause; 
    $sbeams->display_sql(sql=>$sql) if ($show_sql);
 
@@ -623,7 +635,8 @@ sub handle_request {
     	       'resource_url' => 1,
     	       'organism_id' => 1,
              'organism_name' => 1,
-             'match_string' => 1
+             'match_type' => 1,
+             'search_key_id' => 1
   );
   my $spacer = '&nbsp;' x 3;
 
@@ -716,35 +729,42 @@ sub handle_request {
       my $print_warning_msg = 0;
       if ($apply_action =~ /(QUERY|GO)/i){
 				if(! $parameters{exact_match}) {
-					pop @column_array;
-					push @column_array, ["match_string","'fuzzy_match'", "fuzzy_match"];
-					$columns_clause = $sbeams->build_SQL_columns_list(
-						column_array_ref=>\@column_array,
-						colnameidx_ref=>\%colnameidx,
-						column_titles_ref=>\@column_titles
-							);
-					my $search_key_clause = $exact_search_key;
-					$search_key_clause =~ s/\s+/.*/g;
-					my %search_key_ids =();
-					my $counter =0;
-					foreach my $build_id (split(",", $atlas_build_ids)){
+					#pop @column_array;
+					#push @column_array, ["match_string","'fuzzy_match'", "fuzzy_match"];
+#					$columns_clause = $sbeams->build_SQL_columns_list(
+#						column_array_ref=>\@column_array,
+#						colnameidx_ref=>\%colnameidx,
+#						column_titles_ref=>\@column_titles
+#							);
+            $select_sql =~ s/'exact_match' AS "match_type"/'fuzzy_match' AS "match_type"/;
+						my $search_key_clause = $exact_search_key;
+						$search_key_clause =~ s/\s+/.*/g;
+						my %search_key_ids =();
+						my $counter =0;
+						foreach my $build_id (split(",", $atlas_build_ids)){
 						my $file ="/regis/sbeams5/nobackup/builds_output/cache/search_keys_$build_id.txt";
 						if ( -e $file){
 							open (F, "<$file");
 										$search_key_clause =~ s/\|/\\|/g;
 							foreach my $line (grep(/$search_key_clause/i, <F>)){
-					chomp $line;
-					my ($key_id,$search_key_name) = split(/\t/, $line);
-					$search_key_ids{$key_id} =1;
-					$counter++;
-	      }
-	    }
-	    if ($counter > 500){
-	      $print_warning_msg = 1;
-	      last;
-	    }
-
-			}
+								chomp $line;
+								my ($key_id,$search_key_name) = split(/\t/, $line);
+								$search_key_ids{$key_id} =1;
+								$counter++;
+							}
+						}
+						if ($counter > 500){
+							$print_warning_msg = 1;
+							last;
+						}
+			     }
+      ### exclude search_key_ids in exact matches
+      if (defined $exact_resultset{data_ref}){
+        foreach my $row (@{$exact_resultset{data_ref}}){
+          my $id = $row->[$exact_resultset{column_hash_ref}{search_key_id}];
+          delete $search_key_ids{$id} if ($search_key_ids{$id});
+        }
+      }
 			my $search_key_id_str =  join(",", keys %search_key_ids);
 
 			if ($search_key_id_str){
@@ -772,8 +792,8 @@ sub handle_request {
 					}
 				}
 
-				}
-      }
+		 }
+    }
 			
       if(defined $fuzzy_resultset{data_ref}){
 				$n_fuzzy_results = scalar(@{$fuzzy_resultset{data_ref}});
@@ -1403,34 +1423,67 @@ sub getSearchTypeClause {
     $conj = ' OR ';
   }
     
-  if ( $args{params}->{sequence} eq 'on'  ) {
-    $search_type_param{sequence} = 'checked';
-    $clause .= " $conj search_key_type = 'peptide sequence'\n";
-    $conj = ' OR ';
-  }
   if ( $args{params}->{refseq} eq 'on'  ) {
     $search_type_param{refseq} = 'checked';
     $clause .= " $conj search_key_type LIKE 'REFSEQ%'\n";
     $conj = ' OR ';
   }
-  if ( $args{params}->{accession} eq 'on'  ) {
+	if ( $args{params}->{gene_symbol} eq 'on'  ) {
+		$search_type_param{gene_symbol} = 'checked';
+		$clause .= " $conj search_key_type LIKE '%symbol'\n";
+		$conj = ' OR ';
+	}
+  if ( $args{params}->{text}){
+    if ($clause){
+      $clause = " search_key_type not in ('peptide sequence' , 'PeptideAtlas') AND ($clause)\n";
+    }else{
+      $clause = " search_key_type not in ('peptide sequence' , 'PeptideAtlas')";
+    }
+  }else{
+		if ( $args{params}->{pa_accession} eq 'on'  ) {
+			$search_type_param{pa_accession} = 'checked';
+			$clause .= " $conj search_key_type = 'PeptideAtlas'\n";
+		}
+		if ( $args{params}->{sequence} eq 'on'  ) {
+			$search_type_param{sequence} = 'checked';
+			$clause .= " $conj search_key_type = 'peptide sequence'\n";
+		}
+    if ( $args{params}->{accession} eq 'on' || $args{params}->{identifier} =~ /on/i ) {
     $search_type_param{accession} = 'checked';
-    $clause .= " $conj search_key_type IN ('Protein Accession','Protein name', 'Accession', 'gi Accession',
-     'VEGA', 'HINV', 'IPI','WormProt',
-     'RefSeq', 'SGD ID','UniGene', 
-     'UniProt', 'UniProt ID', 'UniProt Name','UniProt/TrEMBL', 'UniProtKB','TrEMBL','UniProt/Swiss-Prot',
-     'Swiss-Prot','SwissProt') ";
-    $conj = ' OR ';
-  }
-  if ( $args{params}->{pa_accession} eq 'on'  ) {
-    $search_type_param{pa_accession} = 'checked';
-    $clause .= " $conj search_key_type = 'PeptideAtlas'\n";
-    $conj = ' OR ';
-  }
-  if ( $args{params}->{gene_symbol} eq 'on'  ) {
-    $search_type_param{gene_symbol} = 'checked';
-    $clause .= " $conj search_key_type LIKE '%symbol'\n";
-    $conj = ' OR ';
+    $clause .= " $conj search_key_type IN ( 'VEGA', 'HINV', 'IPI','SGD ID','UniGene', 
+																						'Accession',
+																						'Araport',
+																						'Araport11',
+																						'BeeBase_protein',
+																						'Celegans accession',
+																						'Ecoli accession',
+																						'Ensembl',
+																						'ENSEMBL Drosophila Proteins',
+																						'GenBank',
+																						'gi Accession',
+																						'HoneyBee accession',
+																						'L. interrogans accession',
+																						'MaizeGDB_v3',
+																						'MaizeGDB_v4',
+																						'MaizeGDB_v5',
+																						'MaizeGDB_W22',
+																						'neXtProt',
+																						'Plastid_RefSeq_id_from_Qi',
+																						'Protein name',
+																						'RefSeq',
+																						'S. pyogenes accession',
+																						'UniParc',
+																						'UniProtKB',
+																						'UniProtKB_accession',
+																						'UniProtKB_compound_identifier',
+																						'UniProtKB Identifier',
+																						'UniProtKB/Swiss-Prot',
+																						'UniProtKB/TrEMBL',
+																						'Protein Accession',
+																						'WormProt')";
+
+
+    }
   }
   if ( $clause && $clause =~/\S/ ) {
     $search_type_param{all_fields} = '';
