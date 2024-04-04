@@ -312,6 +312,7 @@ sub handle_request {
     $parameters{redundancy_constraint} = "4";
     $parameters{protein_properties_constraint} = "2";
     $parameters{covering_constraint} = "0";
+    $parameters{proteome} = "0";
   }
 
 
@@ -558,6 +559,20 @@ sub handle_request {
     constraint_value=>$parameters{covering_constraint} );
   return if ($is_covering_clause eq '-1');
   $is_covering_clause =~ s/LIKE 'on'/= 1/;
+
+  my $proteome_clause = $sbeams->parseConstraint2SQL(
+    constraint_column=>"BS.iscore",
+    constraint_type=>"plain_text",
+    constraint_name=>"iscore",
+    constraint_value=>$parameters{proteome} );
+  return if ($proteome_clause eq '-1');
+  if ($parameters{proteome} =~ /^core/i){
+    $proteome_clause =~ s/BS.iscore.*/BS.iscore = 'y'/;
+  }elsif($parameters{proteome} =~ /noncore/i){
+    $proteome_clause =~ s/BS.iscore.*/BS.iscore is null/;
+  }else{
+    $proteome_clause = '';
+  }
 
   #### Build PROTEIN_PROPERTIES constraint
   my $protein_properties_clause = $sbeams->parseConstraint2SQL(
@@ -911,7 +926,7 @@ sub handle_request {
     }
   }
   #### Set flag to display SQL statement if user selected
-  if ( $parameters{display_options} =~ /ShowSQL/ ) {
+  if ( $parameters{display_options} =~ /ShowSQL/i ) {
     $show_sql = 1;
   }
   
@@ -1103,9 +1118,16 @@ sub handle_request {
 			) SAMPLE_CAT_OBS ON (SAMPLE_CAT_OBS.BIOSEQUENCE_ID = PROT.BIOSEQUENCE_ID)
 		~;
   }
+  if($parameters{proteome}){
+    $sql .= "JOIN $TBAT_BIOSEQUENCE BS ON (BS.biosequence_id = PROT.biosequence_id)";
+  }
+
   $sql .= "LEFT JOIN ($is_keratin_or_immunoglobulin_sql)IS_KER_IG ON (IS_KER_IG.biosequence_id = PROT.biosequence_id)";
+  
 
   $sql .= qq~
+     WHERE 1=1
+     $proteome_clause
      ORDER BY
         group_number,
         ppl_sort_order,

@@ -98,7 +98,7 @@ if ($ptm_coverage){
 print "getting Experiment Contribution table\n";
 my $exp_contrib_table = get_sample_info( $build_id );
 foreach my $row (@$exp_contrib_table){
-  if ($organism !~ /(human|Arabidopsis|Maize|Bburgdorferi|mouse|Canine|coli)/i){
+  if ($organism !~ /(human|Arabidopsis|Maize|Bburgdorferi|mouse|Canine|coli|candida)/i){
 		 pop @$row;
 		 pop @$row;
   } 
@@ -131,9 +131,10 @@ if ($organism =~ /Bburgdorferi/i){
   my $limit = 3;
   my $sql = qq~
 		SELECT NeXtProt_Mapping_id, chromosome, PeptideAtlas_Category 
-		FROM $TBAT_NEXTPROT_CHROMOSOME_MAPPING
-    WHERE NeXtProt_Mapping_id in (94,95,96,97)
-    ORDER BY chromosome
+		FROM $TBAT_NEXTPROT_CHROMOSOME_MAPPING NCM
+    JOIN $TBAT_NEXTPROT_MAPPING NM ON (NM.id = NCM.NeXtProt_Mapping_id)
+    WHERE NM.atlas_build_id = $build_id 
+    ORDER BY NCM.NeXtProt_Mapping_id, NCM.chromosome
 	 ~;
 #			SELECT top $limit NM.id
 #			FROM $TBAT_NEXTPROT_MAPPING NM 
@@ -143,32 +144,33 @@ if ($organism =~ /Bburgdorferi/i){
 
   my @result = $sbeams->selectSeveralColumns($sql);
   my %data = ();
-  my %ncmid2borreliaIso=(
-    94 => 'B31',
-    95 => 'MM1',
-    96 => 'B31-5A4',
-    97 => 'JD1'
-  );
+  $sql = qq~
+	 SELECT id,comment 
+	 FROM $TBAT_NEXTPROT_MAPPING
+	 WHERE atlas_build_id = $build_id
+  ~;
+  my %ncmid2borreliaIso=$sbeams->selectTwoColumnHash($sql);
   foreach my $row (@result){
      my ($id, $chr,$PAcat) = @$row;
      die "ERROR: chromosome mapping id $id not found for Borrelia\n" if (! $ncmid2borreliaIso{$id});
      $chr = 'na' if (! $chr);
      $chr =~ s/plsm\_//;
-     if ($ncmid2borreliaIso{$id} eq 'B31-5A4' || $ncmid2borreliaIso{$id} eq 'JD1'){
+     #if ($ncmid2borreliaIso{$id} eq 'B31-5A4' || $ncmid2borreliaIso{$id} eq 'JD1'){
         if ($chr =~ /plasmid/){
 					if ($chr =~ /plasmid\s+p(26|32|9)/){
 						$chr =~ s/plasmid\s+p/cp/;
 					}else{
             $chr =~ s/plasmid\s+p/lp/;
           }
-        } 
-     }
+        }
+     $chr =~ s/plasmid.//; 
+     #}
      if ($PAcat !~ /not observed/i){
        $data{$ncmid2borreliaIso{$id}}{$chr}{'Observed'}++;
      }
      $data{$ncmid2borreliaIso{$id}}{$chr}{'All'}++;
   }
-  foreach my $org (qw(B31 MM1 B31-5A4 JD1)){
+  foreach my $org (values %ncmid2borreliaIso){
     foreach my $chr (sort {$a cmp $b} keys %{$data{$org}}){
       print $fh "chr_plot|$org\t$chr\t$data{$org}{$chr}{'All'}\t$data{$org}{$chr}{'Observed'}\n";
     }
@@ -177,7 +179,7 @@ if ($organism =~ /Bburgdorferi/i){
 
 print $fh "\n";
 
-if ($organism =~ /(human|Arabidopsis|Maize|Bburgdorferi|mouse|Canine|coli)/i){ 
+if ($organism =~ /(human|Arabidopsis|Maize|Bburgdorferi|mouse|Canine|coli|candida)/i){ 
 
   print "getting plot Peptide Identification by Sample Category data\n";
 
@@ -503,9 +505,10 @@ sub get_build_overview {
   WHERE ATLAS_BUILD_ID = $build_id
   DATASET
 
-
-  my %prot_count = $sbeams->selectTwoColumnHash( <<"  PROT" );
-  SELECT PPL.level_name, COUNT(BS.biosequence_name) cnt
+  my %prot_count =();
+  my %core_prot = ();
+  my %protein_presence_level = $sbeams->selectTwoColumnHash( <<"  PROT" );
+  SELECT BS.biosequence_name , PPL.level_name
   FROM $TBAT_PROTEIN_IDENTIFICATION PID
   JOIN $TBAT_PROTEIN_PRESENCE_LEVEL PPL
   ON PPL.protein_presence_level_id = PID.presence_level_id
@@ -520,8 +523,23 @@ sub get_build_overview {
   AND BS.biosequence_name NOT LIKE '%UNMAPPED%'
   AND BS.biosequence_name NOT LIKE '%CONTAM%'
   AND BS.biosequence_desc NOT LIKE '%common contaminant%'
-  GROUP BY PPL.level_name 
   PROT
+
+  if ( -e "$build_path/DATA_FILES/Core20k.txt" ) {
+     foreach my $line (`cat $build_path/DATA_FILES/Core20k.txt`){
+        chomp $line;
+        $core_prot{$line} =1;
+     } 
+  }else{
+     die "$build_path/DATA_FILES/Core20k.txt file missing\n";
+  }
+  foreach my $protein (keys %protein_presence_level){
+    if (defined $core_prot{$protein}){
+       $prot_count{core}{$protein_presence_level{$protein}}++;
+    }else{
+       $prot_count{noncore}{$protein_presence_level{$protein}}++;
+    }
+  }
 
   $build_info->{build_date} =~ s/^([0-9-]+).*$/$1/;
   
@@ -549,17 +567,23 @@ sub get_build_overview {
   print $fh "build_overview|pep_count_respect\t$pep_count_respect->{cnt}\n" if ($pep_count_respect);
   print $fh "build_overview|modpep_count\t$mod_pep_count->{cnt}\n";
 
-  foreach my $key (sort {$a cmp $b} keys %prot_count){
-     if ($key =~ /canonical/i){
-       print $fh "build_overview|Protein Presence Levels|$key\t$prot_count{$key}\n";
-     }
-  }
-  foreach my $key (sort {$a cmp $b} keys %prot_count){
-     if ($key !~ /canonical/i){
-       print $fh "build_overview|Protein Presence Levels|$key\t$prot_count{$key}\n";
-     }
-  }
 
+  foreach my $t (qw(core noncore)){
+    my $s = 'CoreProteome Protein Presence Levels';
+    if ($t eq 'noncore'){
+      $s = 'Noncore-Proteome Protein Presence Levels';
+    }
+		foreach my $key (sort {$a cmp $b} keys %{$prot_count{$t}}){
+			 if ($key =~ /canonical/i){
+				 print $fh "build_overview|$s|$key\t$prot_count{$t}{$key}\n";
+			 }
+		}
+		foreach my $key (sort {$a cmp $b} keys %{$prot_count{$t}}){
+			 if ($key !~ /canonical/i){
+				 print $fh "build_overview|$s|$key\t$prot_count{$t}{$key}\n";
+			 }
+		}
+  }
   foreach my $key (sort {$a cmp $b} keys %$phospho_info){
     print $fh "build_overview|PhosphoProteome Summary|$key\t$phospho_info->{$key}\n";
   }

@@ -755,24 +755,17 @@ sub build_overview_html {
   }
 
 
+  foreach my $proteome (sort {$a cmp $b} keys %{$build_info->{prot_count}}){
+    $table .= $atlas->encodeSectionItem( key   => "$proteome Protein Presence Levels", tr_info => $tr, value => '', align => 'right' ) . "\n";
+    my @levels = keys %{$build_info->{prot_count}{$proteome}};
+    my @sorted_levels = sort custom_sort @levels;
 
-  $table .= $atlas->encodeSectionItem( key   => 'Protein Presence Levels', tr_info => $tr, value => '', align => 'right' ) . "\n";
-
-  my @levels = sort {$a cmp $b} keys %{$build_info->{prot_count}};
-  my @idx = grep {$levels[$_] ~~ 'noncore-canonical'} 0 .. $#levels;
-  if (@idx){
-    #move noncore-canonical to second
-    my $i = $idx[0];
-    my $val = $levels[$i];
-    splice @levels, $i, 1;
-    splice @levels, 1, 0, $val;
-  }
-
-  foreach my $key (@levels){
-     my $level = $key;
-     $level =~ s/\_/ /g;
-     $level =~ s/(\w+)/\u$1/g; 
-     $table .= $atlas->encodeSectionItem( key   => "&#8195;$level", tr_info => $tr, value => $sbeams->commifyNumber($build_info->{prot_count}{$key}), align => 'right' ) . "\n";
+		foreach my $key (@sorted_levels){
+			 my $level = $key;
+			 $level =~ s/\_/ /g;
+			 $level =~ s/(\w+)/\u$1/g; 
+			 $table .= $atlas->encodeSectionItem( key   => "&#8195;$level", tr_info => $tr, value => $sbeams->commifyNumber($build_info->{prot_count}{$proteome}{$key}), align => 'right' ) . "\n";
+		}
   }
   if ($build_name =~ /phospho/i){
     $table .= $atlas->encodeSectionItem( key   => 'PhosphoProteome Summary', tr_info => $tr, value => '', align => 'right' ) . "\n";
@@ -790,7 +783,19 @@ sub build_overview_html {
   $table .= "<script>document.title = 'PeptideAtlas Build Details: $build_info->{atlas_build_name}';</script>\n";
   return $table; 
 }
-
+### 
+# Custom sort function
+sub custom_sort {
+    my ($a_val, $b_val) = ($a, $b);
+    # Check if $a or $b is equal to the top element
+    if ($a =~ /canonical/) {
+        return -1; # $a comes before $b
+    } elsif ($b eq 'noncore-canonical') {
+        return 1;  # $b comes before $a
+    }
+    # Otherwise, use default string comparison
+    return $a_val cmp $b_val;
+}
 # Peptide build stats
 sub get_sample_info {
   my $build_id = shift;
@@ -1482,9 +1487,15 @@ sub generate_html_from_file {
 
        while ($line =~ /^build_overview/){
 	 $line =~ s/build_overview\|//;
-	 if ($line =~ /Protein Presence Levels\|(.*)\t(\d+)$/){
-	   my $level_id = $protein_level_ids{$1};
-	   $build_info->{prot_count}->{$1} = "<a href='$protein_url$level_id' target='_blank'>$2</a>";
+	 if ($line =~ /(.*)Protein Presence Levels\|(.*)\t(\d+)$/){
+	   my $level_id = $protein_level_ids{$2};
+     if ($1 eq 'CoreProteome '){
+       $build_info->{prot_count}->{$1}{$2} = "<a href='$protein_url$level_id&proteome=CoreProteome' target='_blank'>$3</a>";
+     }elsif($1 eq 'Noncore-Proteome '){
+	     $build_info->{prot_count}->{$1}{$2} = "<a href='$protein_url$level_id&proteome=NonCoreProteome' target='_blank'>$3</a>";
+     }else{
+       $build_info->{prot_count}->{$1}{$2} = "<a href='$protein_url$level_id' target='_blank'>$3</a>";
+     }
 	 }elsif ($line =~ /PhosphoProteome Summary\|(.*)\t(\d+)$/){
 	   $build_info->{phospho_info}->{$1} = $2;
 	 }else{
