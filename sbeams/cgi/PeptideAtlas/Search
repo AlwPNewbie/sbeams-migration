@@ -516,7 +516,7 @@ sub handle_request {
     $atlas_build_ids = join(",", @default_build_ids);
     $columns_clause =~ s/PROTLEVEL.presence_level/''/;
 		$select_sql = qq~
-			 SELECT DISTINCT TOP 501 $columns_clause
+			 SELECT TOP 501 $columns_clause
 				 FROM $TBAT_SEARCH_KEY_LINK SKL
 				 LEFT JOIN  $TBAT_SEARCH_KEY_ENTITY SKE
 							ON (SKL.RESOURCE_NAME = SKE.RESOURCE_NAME)
@@ -591,7 +591,7 @@ sub handle_request {
 				 )
 				 ~;
 		$select_sql = qq~
-				 SELECT DISTINCT TOP 501 $columns_clause
+				 SELECT TOP 501 $columns_clause
 				 FROM $TBAT_SEARCH_KEY_LINK SKL
 				 LEFT JOIN  $TBAT_SEARCH_KEY_ENTITY SKE 
 							ON (SKL.RESOURCE_NAME = SKE.RESOURCE_NAME) 
@@ -616,7 +616,13 @@ sub handle_request {
 					$search_key_clause
 					$search_types_clause
 					AND SKL.atlas_build_id IN ( $atlas_build_ids )
-			 ORDER BY search_key_name
+					ORDER BY 
+          CASE WHEN  PROTLEVEL.presence_level is NULL then 1
+					ELSE 0
+					END,
+          LEFT(PROTLEVEL.presence_level, CHARINDEX(' ', PROTLEVEL.presence_level + ' ') - 1),
+					SKL.resource_n_matches DESC, SKE.search_key_name
+
 	 ~;
 
 	 $sql = $select_sql.$where_clause; 
@@ -774,7 +780,12 @@ sub handle_request {
 						$search_types_clause
 						AND SKE.search_key_id in ($search_key_id_str)
 						AND SKL.atlas_build_id IN ( $atlas_build_ids )
-					ORDER BY search_key_name
+				   ORDER BY 
+           CASE WHEN PROTLEVEL.presence_level is NULL then 1
+						ELSE 0 
+						END,
+            LEFT(PROTLEVEL.presence_level, CHARINDEX(' ', PROTLEVEL.presence_level + ' ') - 1),
+						SKL.resource_n_matches DESC, SKE.search_key_name	
 					~;
 						#$log->error($sql);
 						$sbeams->fetchResultSet(
