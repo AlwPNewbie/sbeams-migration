@@ -540,7 +540,7 @@ sub handle_request {
 			 INNER JOIN $TBAT_PROTEIN_PRESENCE_LEVEL PPL ON ( PPL.protein_presence_level_id = PID.presence_level_id )
 			 WHERE 1 = 1
 						 AND AB.atlas_build_id IN ( $atlas_build_ids )
-						 AND PPL.protein_presence_level_id IN ( 1,2,6,3 )
+						 --AND PPL.protein_presence_level_id IN ( 1,2,6,3 )
 				)
 				UNION
 			 ( SELECT  AB.atlas_build_id as "atlas_build_id",
@@ -561,8 +561,8 @@ sub handle_request {
 							AND ( BS_REL.biosequence_set_id = BSS.biosequence_set_id )
 				 WHERE 1 = 1
 									AND AB.atlas_build_id IN ( $atlas_build_ids )
-									AND PPL.protein_presence_level_id IN ( 1,2,6,3 )
-									AND BRT.biosequence_relationship_type_id IN ( 1,2 )
+									--AND PPL.protein_presence_level_id IN ( 1,2,6,3 )
+									--AND BRT.biosequence_relationship_type_id IN ( 1,2 )
 				)
 				UNION
 			 ( SELECT  
@@ -586,8 +586,8 @@ sub handle_request {
 							AND ( BS_REL.biosequence_set_id = BSS.biosequence_set_id)
 						 WHERE 1 = 1
 									AND AB.atlas_build_id IN ( $atlas_build_ids )
-									AND PPL.protein_presence_level_id IN ( 1,2,6,3 )
-									AND BRT.biosequence_relationship_type_id IN ( 1,2 )
+									--AND PPL.protein_presence_level_id IN ( 1,2,6,3 )
+									--AND BRT.biosequence_relationship_type_id IN ( 1,2 )
 				 )
 				 ~;
 		$select_sql = qq~
