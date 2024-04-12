@@ -1050,14 +1050,14 @@ sub handle_request {
         next if ($line !~ /^proteome_coverage/);
         $line =~ s/\t.*//;
         $line =~ s/\s+$//;
-        my @elms = split(/\|/, $line);
+        my @elms = split(/(?<!\\)\|/, $line);
         if (@elms == 4){
           my $proteome = $elms[2];
           my ($pat_type, $pat_str) = split(/,/,  $elms[3]);
           $elms[3] =~ /^(.*),(.*)$/;
           my $pat_type = $1;
           my @patterns = split(/;/, $2);
-	  my $matched = $sbeamsMOD->match_proteome_component(pattern=>\@patterns,
+					my $matched = $sbeamsMOD->match_proteome_component(pattern=>\@patterns,
 							     source_type => $pat_type,
 							     biosequence_name => $biosequence->{biosequence_accession},
 							     biosequence_desc => $biosequence->{biosequence_desc});
