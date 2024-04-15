@@ -488,8 +488,11 @@ sub handle_request {
     ["resource_gene_symbol","SKE_GENE.resource_gene_symbol", "Gene Symbol"],
     ["search_key_id", "SKE.search_key_id", "search_key_id"],
   );
-
   push @column_array, ["match_type","'exact_match'", "match_type"];
+  if ($parameters{pa_accession} =~ /on/i || $parameters{sequence} =~ /on/i){
+    push @column_array, ["matched_protein_name","BS_PM.biosequence_name", "Protein Name"];
+  }
+  push @column_array, ["row_number","ROW_NUMBER() OVER(PARTITION BY SKE.search_key_name ORDER BY PRESENCE_LEVEL_ORDER.id)", "row_number"];
 
   #### Build the columns part of the SQL statement
   my %colnameidx = ();
@@ -499,6 +502,21 @@ sub handle_request {
     colnameidx_ref=>\%colnameidx,
     column_titles_ref=>\@column_titles
   );
+  my $presence_level_order = qq~
+        (VALUES
+            ('canonical',1),
+            ('noncore-canonical',2),
+            ('indistinguishable representative',3),
+            ('representative', 4),
+            ('marginally distinguished',5),
+            ('weak',6),
+            ('insufficient evidence',7),
+            ('subsumed',8),
+            ('identical',9),
+            ('', 10)
+      )AS PRESENCE_LEVEL_ORDER (name, id)
+   ~;
+
 
   ## all any search for sequence search 
   my $select_sql;
@@ -590,26 +608,54 @@ sub handle_request {
 									--AND BRT.biosequence_relationship_type_id IN ( 1,2 )
 				 )
 				 ~;
-		$select_sql = qq~
-				 SELECT TOP 501 $columns_clause
-				 FROM $TBAT_SEARCH_KEY_LINK SKL
-				 LEFT JOIN  $TBAT_SEARCH_KEY_ENTITY SKE 
-							ON (SKL.RESOURCE_NAME = SKE.RESOURCE_NAME) 
-				 JOIN $TB_ORGANISM O ON (O.ORGANISM_ID = SKL.ORGANISM_ID)
-									$atlas_build_clause
-				 JOIN $TBAT_ATLAS_BUILD AB ON (AB.ATLAS_BUILD_ID = DAB.ATLAS_BUILD_ID)
-				 LEFT JOIN ($proteinlevel_sql) AS PROTLEVEL
-					ON (PROTLEVEL.BIOSEQUENCE_NAME = SKL.RESOURCE_NAME and SKL.atlas_build_id = PROTLEVEL.atlas_build_id)
-				 LEFT JOIN (
-					 SELECT DISTINCT SKE2.RESOURCE_NAME, 
-					 MAX(CASE WHEN SKE2.SEARCH_KEY_TYPE='GENE NAME' THEN SKE2.SEARCH_KEY_NAME ELSE NULL END) AS RESOURCE_GENE_NAME,
-					 MAX(CASE WHEN SKE2.SEARCH_KEY_TYPE='UNIPROTKB_SYMBOL' THEN SKE2.SEARCH_KEY_NAME ELSE NULL END) AS RESOURCE_GENE_SYMBOL
-					 FROM $TBAT_SEARCH_KEY_ENTITY SKE2
-					 WHERE SKE2.SEARCH_KEY_TYPE = 'GENE NAME' OR SKE2.SEARCH_KEY_TYPE = 'UNIPROTKB_SYMBOL' 
-           GROUP BY SKE2.RESOURCE_NAME
-				 ) AS SKE_GENE
-				 ON (SKE_GENE.RESOURCE_NAME = SKL.RESOURCE_NAME)
-			 ~;
+    ## need to join peptide_mapping table to get matched biosequence name
+    if ($parameters{pa_accession} =~ /on/i || $parameters{sequence} =~ /on/i){
+      $select_sql = qq~
+           SELECT TOP 501 $columns_clause
+           FROM $TBAT_SEARCH_KEY_LINK SKL
+           LEFT JOIN  $TBAT_SEARCH_KEY_ENTITY SKE
+                ON (SKL.RESOURCE_NAME = SKE.RESOURCE_NAME)
+           JOIN $TB_ORGANISM O ON (O.ORGANISM_ID = SKL.ORGANISM_ID)
+                    $atlas_build_clause
+           JOIN $TBAT_ATLAS_BUILD AB ON (AB.ATLAS_BUILD_ID = DAB.ATLAS_BUILD_ID)
+					 JOIN $TBAT_PEPTIDE P ON (P.PEPTIDE_ACCESSION  = SKE.RESOURCE_NAME)
+					 JOIN $TBAT_PEPTIDE_INSTANCE PI ON (PI.PEPTIDE_ID = P.PEPTIDE_ID)
+					 JOIN $TBAT_PEPTIDE_MAPPING PM ON (PI.PEPTIDE_INSTANCE_ID = PM.PEPTIDE_INSTANCE_ID)
+					 JOIN $TBAT_BIOSEQUENCE BS_PM ON (BS_PM.BIOSEQUENCE_ID = PM.MATCHED_BIOSEQUENCE_ID) 
+           LEFT JOIN ($proteinlevel_sql) AS PROTLEVEL
+            ON (PROTLEVEL.BIOSEQUENCE_NAME = BS_PM.BIOSEQUENCE_NAME AND SKL.ATLAS_BUILD_ID = PROTLEVEL.ATLAS_BUILD_ID)
+           LEFT JOIN (
+             SELECT DISTINCT SKE2.RESOURCE_NAME,
+             MAX(CASE WHEN SKE2.SEARCH_KEY_TYPE='GENE NAME' THEN SKE2.SEARCH_KEY_NAME ELSE NULL END) AS RESOURCE_GENE_NAME,
+             MAX(CASE WHEN SKE2.SEARCH_KEY_TYPE='UNIPROTKB_SYMBOL' THEN SKE2.SEARCH_KEY_NAME ELSE NULL END) AS RESOURCE_GENE_SYMBOL
+             FROM $TBAT_SEARCH_KEY_ENTITY SKE2
+             WHERE SKE2.SEARCH_KEY_TYPE = 'GENE NAME' OR SKE2.SEARCH_KEY_TYPE = 'UNIPROTKB_SYMBOL'
+             GROUP BY SKE2.RESOURCE_NAME
+           ) AS SKE_GENE
+           ON (SKE_GENE.RESOURCE_NAME = SKL.RESOURCE_NAME)
+         ~;
+    }else{
+			$select_sql = qq~
+					 SELECT TOP 501 $columns_clause
+					 FROM $TBAT_SEARCH_KEY_LINK SKL
+					 LEFT JOIN  $TBAT_SEARCH_KEY_ENTITY SKE 
+								ON (SKL.RESOURCE_NAME = SKE.RESOURCE_NAME) 
+					 JOIN $TB_ORGANISM O ON (O.ORGANISM_ID = SKL.ORGANISM_ID)
+										$atlas_build_clause
+					 JOIN $TBAT_ATLAS_BUILD AB ON (AB.ATLAS_BUILD_ID = DAB.ATLAS_BUILD_ID)
+					 LEFT JOIN ($proteinlevel_sql) AS PROTLEVEL
+						ON (PROTLEVEL.BIOSEQUENCE_NAME = SKL.RESOURCE_NAME and SKL.atlas_build_id = PROTLEVEL.atlas_build_id)
+					 LEFT JOIN (
+						 SELECT DISTINCT SKE2.RESOURCE_NAME, 
+						 MAX(CASE WHEN SKE2.SEARCH_KEY_TYPE='GENE NAME' THEN SKE2.SEARCH_KEY_NAME ELSE NULL END) AS RESOURCE_GENE_NAME,
+						 MAX(CASE WHEN SKE2.SEARCH_KEY_TYPE='UNIPROTKB_SYMBOL' THEN SKE2.SEARCH_KEY_NAME ELSE NULL END) AS RESOURCE_GENE_SYMBOL
+						 FROM $TBAT_SEARCH_KEY_ENTITY SKE2
+						 WHERE SKE2.SEARCH_KEY_TYPE = 'GENE NAME' OR SKE2.SEARCH_KEY_TYPE = 'UNIPROTKB_SYMBOL' 
+						 GROUP BY SKE2.RESOURCE_NAME
+					 ) AS SKE_GENE
+					 ON (SKE_GENE.RESOURCE_NAME = SKL.RESOURCE_NAME)
+				 ~;
+     }
    }
 	 my $where_clause = qq~
 				WHERE 1 = 1
@@ -617,15 +663,26 @@ sub handle_request {
 					$search_types_clause
 					AND SKL.atlas_build_id IN ( $atlas_build_ids )
 					ORDER BY 
-          CASE WHEN  PROTLEVEL.presence_level is NULL then 1
-					ELSE 0
-					END,
-          LEFT(PROTLEVEL.presence_level, CHARINDEX(' ', PROTLEVEL.presence_level + ' ') - 1),
-					SKL.resource_n_matches DESC, SKE.search_key_name
-
+          SKE.search_key_name,
+          PRESENCE_LEVEL_ORDER.id
 	 ~;
 
-	 $sql = $select_sql.$where_clause; 
+	 $sql = qq~
+      SELECT TOP 501 RESULT.* 
+				FROM (
+				$select_sql
+				JOIN 
+				$presence_level_order
+				ON (LEFT(PROTLEVEL.presence_level, CHARINDEX(' ', PROTLEVEL.presence_level + ' ') - 1) = PRESENCE_LEVEL_ORDER.name) 
+				$where_clause
+				) RESULT
+      JOIN
+      $presence_level_order
+      ON (LEFT(RESULT.presence_level, CHARINDEX(' ', RESULT.presence_level + ' ') - 1) = PRESENCE_LEVEL_ORDER.name)
+			WHERE RESULT.ROW_NUMBER=1
+			ORDER BY PRESENCE_LEVEL_ORDER.ID,RESULT.RESOURCE_N_MATCHES DESC,RESULT.SEARCH_KEY_NAME
+   ~;
+
    $sbeams->display_sql(sql=>$sql) if ($show_sql);
 
   #### Define the hypertext links for columns that need them
@@ -642,7 +699,8 @@ sub handle_request {
     	       'organism_id' => 1,
              'organism_name' => 1,
              'match_type' => 1,
-             'search_key_id' => 1
+             'search_key_id' => 1,
+             'row_number' => 1
   );
   my $spacer = '&nbsp;' x 3;
 
@@ -732,7 +790,7 @@ sub handle_request {
         } 
       }
 
-      my $print_warning_msg = 0;
+      #my $print_warning_msg = 0;
       if ($apply_action =~ /(QUERY|GO)/i){
 				if(! $parameters{exact_match}) {
 					#pop @column_array;
@@ -759,8 +817,8 @@ sub handle_request {
 								$counter++;
 							}
 						}
-						if ($counter > 500){
-							$print_warning_msg = 1;
+						if ($counter > 1000){
+							#$print_warning_msg = 1;
 							last;
 						}
 			     }
@@ -775,17 +833,22 @@ sub handle_request {
 
 			if ($search_key_id_str){
 				$sql = qq~
-					$select_sql
-					WHERE 1 = 1
-						$search_types_clause
-						AND SKE.search_key_id in ($search_key_id_str)
-						AND SKL.atlas_build_id IN ( $atlas_build_ids )
-				   ORDER BY 
-           CASE WHEN PROTLEVEL.presence_level is NULL then 1
-						ELSE 0 
-						END,
-            LEFT(PROTLEVEL.presence_level, CHARINDEX(' ', PROTLEVEL.presence_level + ' ') - 1),
-						SKL.resource_n_matches DESC, SKE.search_key_name	
+          SELECT TOP 501 RESULT.*
+          FROM (
+						$select_sql
+						JOIN 
+						$presence_level_order
+						ON (LEFT(PROTLEVEL.presence_level, CHARINDEX(' ', PROTLEVEL.presence_level + ' ') - 1) = PRESENCE_LEVEL_ORDER.name)
+						WHERE 1 = 1
+							$search_types_clause
+							AND SKE.search_key_id in ($search_key_id_str)
+							AND SKL.atlas_build_id IN ( $atlas_build_ids )
+           ) RESULT
+          JOIN
+          $presence_level_order
+          ON (LEFT(RESULT.presence_level, CHARINDEX(' ', RESULT.presence_level + ' ') - 1) = PRESENCE_LEVEL_ORDER.name)
+          WHERE RESULT.ROW_NUMBER=1
+          ORDER BY PRESENCE_LEVEL_ORDER.ID,RESULT.RESOURCE_N_MATCHES DESC,RESULT.SEARCH_KEY_NAME
 					~;
 						#$log->error($sql);
 						$sbeams->fetchResultSet(
@@ -871,7 +934,7 @@ sub handle_request {
 						column_titles_ref=>\@column_titles,
 						base_url=>$base_url,
 								);
-								if(scalar(@{$resultset_ref->{data_ref}}) >= 500|| $print_warning_msg){
+								if(scalar(@{$resultset_ref->{data_ref}}) >= 500){
 						print "<BR><font color=\"red\"><b>There were too many matching results, please refine the search key.</b></font><BR><BR>\n";
 					}
 
@@ -881,6 +944,7 @@ sub handle_request {
 						rs_params_ref=>\%rs_params,
 						base_url=>$base_url,
 	      );
+        #$sbeams->display_sql(sql=>$sql);
 
 			}else{
 				if($n_fuzzy_results > 1){
@@ -900,7 +964,7 @@ sub handle_request {
 						base_url  => $base_url
 				);
 				}
-				if(($n_fuzzy_results+ $n_exact_results) >= 500 || $print_warning_msg){
+				if(($n_fuzzy_results+ $n_exact_results) >= 500){
 					print "<BR><font color=\"red\"><b>There were too many matching results, please refine the search keys.</b></font><BR><BR>\n";
 				}
 				$sbeams-> displayResultSetControls(
