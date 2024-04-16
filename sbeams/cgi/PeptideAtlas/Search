@@ -506,14 +506,14 @@ sub handle_request {
         (VALUES
             ('canonical',1),
             ('noncore-canonical',2),
-            ('indistinguishable representative',3),
-            ('representative', 4),
-            ('marginally distinguished',5),
+            ('indistinguishable',3),
+            ('representative',4),
+            ('marginally',5),
             ('weak',6),
-            ('insufficient evidence',7),
+            ('insufficient',7),
             ('subsumed',8),
             ('identical',9),
-            ('', 10)
+            ('',10)
       )AS PRESENCE_LEVEL_ORDER (name, id)
    ~;
 
@@ -680,8 +680,12 @@ sub handle_request {
       $presence_level_order
       ON (LEFT(RESULT.presence_level, CHARINDEX(' ', RESULT.presence_level + ' ') - 1) = PRESENCE_LEVEL_ORDER.name)
 			WHERE RESULT.ROW_NUMBER=1
-			ORDER BY PRESENCE_LEVEL_ORDER.ID,RESULT.RESOURCE_N_MATCHES DESC,RESULT.SEARCH_KEY_NAME
    ~;
+   if ($parameters{pa_accession} =~ /on/i || $parameters{sequence} =~ /on/i){
+      $sql = "$sql\nORDER BY RESULT.RESOURCE_N_MATCHES DESC, PRESENCE_LEVEL_ORDER.ID,RESULT.SEARCH_KEY_NAME";
+   }else{
+      $sql = "$sql\nORDER BY PRESENCE_LEVEL_ORDER.ID,RESULT.RESOURCE_N_MATCHES DESC,RESULT.SEARCH_KEY_NAME";
+   } 
 
    $sbeams->display_sql(sql=>$sql) if ($show_sql);
 
@@ -848,9 +852,14 @@ sub handle_request {
           $presence_level_order
           ON (LEFT(RESULT.presence_level, CHARINDEX(' ', RESULT.presence_level + ' ') - 1) = PRESENCE_LEVEL_ORDER.name)
           WHERE RESULT.ROW_NUMBER=1
-          ORDER BY PRESENCE_LEVEL_ORDER.ID,RESULT.RESOURCE_N_MATCHES DESC,RESULT.SEARCH_KEY_NAME
+          
 					~;
-						#$log->error($sql);
+					 if ($parameters{pa_accession} =~ /on/i || $parameters{sequence} =~ /on/i){
+							$sql = "$sql\nORDER BY RESULT.RESOURCE_N_MATCHES DESC, PRESENCE_LEVEL_ORDER.ID,RESULT.SEARCH_KEY_NAME";
+					 }else{
+							$sql = "$sql\nORDER BY PRESENCE_LEVEL_ORDER.ID,RESULT.RESOURCE_N_MATCHES DESC,RESULT.SEARCH_KEY_NAME";
+					 }
+					 #$log->error($sql);
 						$sbeams->fetchResultSet(
 							sql_query=>$sql,
 							resultset_ref=> \%fuzzy_resultset,
