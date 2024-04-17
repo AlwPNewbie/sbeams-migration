@@ -504,7 +504,12 @@ sub handle_request {
   }
 
   if ($parameters{display_options} =~ /proteinView/){
-    $sql = "$sql\n$group_by\n$order_by_1\n";
+    $sql = qq~
+           $sql
+           AND (PTM.nP95>0 or PTM.nP99 >0 or PTM.nP100 >0 or PTM.noChoice > 0)
+           $group_by
+           $order_by_1
+    ~;
   }
 
   #### Certain types of actions should be passed to links
