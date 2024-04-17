@@ -288,6 +288,22 @@ sub handle_request {
     constraint_value=>$parameters{presence_level_constraint} );
   return if ($presence_level_clause eq '-1');
 
+  #### Build BEST_PROBABILITY constraint
+  my $probability_clause = ''; 
+	my %probability_selections =  (1 => 'PTM.nP95>0',
+										2 => 'PTM.nP99 >0',
+										3 => 'PTM.nP100 >0',
+										4 => 'PTM.noChoice >0',
+									 ); 
+  if ($parameters{probability_constraint}){
+    my $or = '';
+    foreach my $n (split(",", $parameters{probability_constraint})){
+       $probability_clause .= "$or $probability_selections{$n} ";
+       $or = 'or'; 
+    }
+    $probability_clause = "AND ($probability_clause)";
+  }
+
 
   ## get organism_id to pass on to url_cols
   my $tsql = qq~
@@ -436,9 +452,9 @@ sub handle_request {
         @column_array,
         ["ptm_type","PTM.ptm_type","PTM Type"],
         ["ptm_residue_nPover80", "count(distinct PTM.offset)", "N_PTM_Sites nP.8-1"],
-        ["nP80", "sum(PTM.nP81)","nP.80-.95"], 
-        ["nP95", "sum(PTM.nP95)","nP.95-.99"],
-        ["nP99", "sum(PTM.nP99)","nP.99-1"],
+        ["nP95", "sum(PTM.nP95)","nP.80-.95"], 
+        ["nP99", "sum(PTM.nP99)","nP.95-.99"],
+        ["nP100", "sum(PTM.nP100)","nP.99-1"],
         ["noChoice", "sum(PTM.noChoice)","no-choice"],
         ["biosequence_gene_name","BS.biosequence_gene_name","Biosequence Gene Name"],
         ["biosequence_desc","CAST(BS.biosequence_desc AS varchar(255))","Biosequence Description"],
@@ -471,6 +487,7 @@ sub handle_request {
      AND PTM.nobs > 0
      $atlas_build_clause
      $ptm_type_clause
+     $probability_clause
 		 $biosequence_name_clauses
 		 $biosequence_gene_name_clauses
 		 $biosequence_desc_clauses
