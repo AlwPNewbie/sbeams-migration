@@ -506,14 +506,15 @@ sub handle_request {
         (VALUES
             ('canonical',1),
             ('noncore-canonical',2),
-            ('indistinguishable',3),
+            ('indistinguishable_representative',3),
             ('representative',4),
-            ('marginally',5),
+            ('marginally_distinguished',5),
             ('weak',6),
-            ('insufficient',7),
-            ('subsumed',8),
-            ('identical',9),
-            ('',10)
+            ('insufficient_evidence',7),
+            ('indistinguishable',8),
+            ('subsumed',9),
+            ('identical',10),
+            ('',11)
       )AS PRESENCE_LEVEL_ORDER (name, id)
    ~;
 
@@ -548,7 +549,7 @@ sub handle_request {
 		my $proteinlevel_sql = qq~
 			(SELECT  AB.atlas_build_id as "atlas_build_id",
 							 BS_REF.biosequence_name AS "biosequence_name",
-							 PPL.level_phrase AS "presence_level"
+							 replace(PPL.level_phrase, ' ', '_') AS "presence_level"
 			 FROM $TBAT_PROTEIN_IDENTIFICATION PID
 			 INNER JOIN $TBAT_ATLAS_BUILD AB	ON ( AB.atlas_build_id = PID.atlas_build_id )
 			 INNER JOIN $TBAT_BIOSEQUENCE_SET BSS ON ( BSS.biosequence_set_id = AB.biosequence_set_id )
@@ -563,7 +564,7 @@ sub handle_request {
 				UNION
 			 ( SELECT  AB.atlas_build_id as "atlas_build_id",
 						 BS_REL.biosequence_name AS "biosequence_name", 
-						 BRT.relationship_phrase  + ' ' + 
+						 replace(BRT.relationship_phrase,' ', '_')  + ' ' + 
 						 BS_REF.biosequence_name AS "presence_level" 
 				 FROM $TBAT_PROTEIN_IDENTIFICATION PID
 				 INNER JOIN $TBAT_BIOSEQUENCE_RELATIONSHIP BR ON ( BR.reference_biosequence_id = PID.biosequence_id ) 
@@ -586,7 +587,7 @@ sub handle_request {
 			 ( SELECT  
 						 AB.atlas_build_id as "atlas_build_id",
 						 BS_INDIS.biosequence_name AS "biosequence_name",
-						 BRT.relationship_phrase   + ' ' +
+						 replace(BRT.relationship_phrase,' ', '_')   + ' ' +
 						 BS_REL.biosequence_name AS "presence_level"  
 				 FROM $TBAT_PROTEIN_IDENTIFICATION PID
 				 INNER JOIN $TBAT_BIOSEQUENCE_RELATIONSHIP BR	ON ( BR.reference_biosequence_id = PID.biosequence_id )
@@ -817,6 +818,7 @@ sub handle_request {
 							foreach my $line (grep(/$search_key_clause/i, <F>)){
 								chomp $line;
 								my ($key_id,$search_key_name) = split(/\t/, $line);
+                next if ($search_key_name !~ /$search_key_clause/i);
 								$search_key_ids{$key_id} =1;
 								$counter++;
 							}
@@ -1137,11 +1139,12 @@ sub displayTable{
     my $organism_name = $row->[7];
     my $resource_n_matches = $row->[4];
     my $resource_type = 'Protein';
+
     if ($row->[8] =~ /sumed/){
       $row->[8] =~ s/sumed/sumed by/;
     }elsif($row->[8] =~ /identical/){
       $row->[8] =~ s/identical/identical to/;
-    }elsif($row->[8] =~ /indistinguishable/){
+    }elsif($row->[8] =~ /indistinguishable$/){
       $row->[8] =~ s/indistinguishable/indistinguishable from/;
     }
     next if($rescource_name =~ /NO_ENS/);
