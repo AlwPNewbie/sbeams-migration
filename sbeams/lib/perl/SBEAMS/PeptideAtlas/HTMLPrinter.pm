@@ -1564,7 +1564,10 @@ sub getPTMTableDisplay {
         my $site = $pos+1;
         my $residue=$vals->[0]; 
 				push @row,$site; 
-        my $link='';
+        my $url="$CGI_BASE_DIR/PeptideAtlas/GetPTMSpectra?".
+                  "atlas_build_id=$atlas_build_id&site=$site&biosequence_name=$prot".
+                  "&ptm_type=$ptm_type&residue=$residue&apply_action=QUERY";
+
         #my @columns = ('Residue','nObs', 'One_mod', 'Two_mods', 'Over_two_mods',
         #         'nP<.01', 'nP<.05', 'nP<.20', 'nP.2-.8', 'nP>.80', 'nP>.95', 'nP>.99',
         #                  'no-choice','enriched-with-mod','enriched-but-non-mod','non-enriched',
@@ -1582,26 +1585,24 @@ sub getPTMTableDisplay {
 						$vals->[$i] = '-';
 					}
           ## make links for nP>.95 and nP>.99 ids 
+          my $link = $url; 
+          if ($vals->[9] > 0){
+            $link = $url ."&min=0.80&max=0.95";
+            $vals->[9] = $self->make_pa_tooltip( tip_text => "Get observed spectra covering this site with ptm scores within 0.80-0.95",
+                                                 link_text => "<a href='$link' target='_blank'>$vals->[9]</a>" );
+          }
           if ($vals->[10] > 0){
-            $link ="$CGI_BASE_DIR/PeptideAtlas/GetPTMSpectra?".
-                   "atlas_build_id=$atlas_build_id&site=$site&min=0.95&max=0.99&biosequence_name=$prot".
-                   "&ptm_type=$ptm_type&residue=$residue&apply_action=QUERY";
+            $link =$url ."&min=0.95&max=0.99";
             $vals->[10] = $self->make_pa_tooltip( tip_text => "Get observed spectra covering this site with ptm scores within 0.95-0.99",
                                                  link_text => "<a href='$link' target='_blank'>$vals->[10]</a>" );
-
           }
           if ($vals->[11] > 0){
-            $link ="$CGI_BASE_DIR/PeptideAtlas/GetPTMSpectra?".
-                   "atlas_build_id=$atlas_build_id&site=$site&min=0.99&biosequence_name=$prot".
-                   "&ptm_type=$ptm_type&residue=$residue&apply_action=QUERY";
+            $link = $url ."&min=0.99";
             $vals->[11] = $self->make_pa_tooltip( tip_text => "Get observed spectra covering this site with ptm scores within 0.99-1.0",
                                                  link_text => "<a href='$link' target='_blank'>$vals->[11]</a>" );
-
           }
           if ($vals->[12] > 0){
-            $link ="$CGI_BASE_DIR/PeptideAtlas/GetPTMSpectra?".
-                   "atlas_build_id=$atlas_build_id&site=$site&nochoice=1&biosequence_name=$prot".
-                   "&ptm_type=$ptm_type&residue=$residue&apply_action=QUERY";
+            $link = $url ."&nochoice=1";
             $vals->[12] = $self->make_pa_tooltip( tip_text => "Get observed spectra covering this site that have no choice in the localization of the PTM ", link_text => "<a href='$link' target='_blank'>$vals->[12]</a>" );
           }
           push@row, $vals->[$i]; 

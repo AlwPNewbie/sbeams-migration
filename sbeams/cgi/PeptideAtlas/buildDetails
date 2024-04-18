@@ -1630,28 +1630,28 @@ sub generate_html_from_file {
 	my %ptm_table_headings = ();
 	my %ptm_table_data = ();
 	if ($pre_table =~ /ptm_coverage/){
-	  my $ptm_summary_url = "$CGI_BASE_DIR/PeptideAtlas/GetPTMSummary?atlas_build_id=$build_id".
-	      "&display_options=proteinView&action=QUERY".
-	      "&redundancy_constraint=on&proteome_component=";
 	  my $counter = 0;
 	  my %colnames = ();
 	  my %col2residue = ();
 	  my $residue = '';
 	  my ($proteome, $ptm_type,);
 	  foreach my $row (@data){
+	    my $ptm_summary_url = "$CGI_BASE_DIR/PeptideAtlas/GetPTMSummary?atlas_build_id=$build_id".
+	      "&display_options=proteinView&action=QUERY".
+	      "&redundancy_constraint=on&proteome_component=";
 	    if ($row->[0] =~ /Database/){
 	      $row->[0] =~ /.*ptm_coverage_([^\|]+)\|(.*)/;
 	      $ptm_type = $1;
 	      $row->[0] =~ s/.*\|//;
 	      push @{$ptm_table_headings{$ptm_type}}, $row;
 	      for (my $i=1; $i < @$row; $i++){
-		if ($row->[$i] =~ /^total_(\w)_.*$/){
-		  $residue = $1;
-		}
-		my $colname = $row->[$i];
-		$colname =~ s/_\w_sites/_sites/;
-		$colnames{$ptm_type}{$i} = $colname;
-		$col2residue{$ptm_type}{$i} = $residue;
+					if ($row->[$i] =~ /^total_(\w)_.*$/){
+						$residue = $1;
+					}
+					my $colname = $row->[$i];
+					$colname =~ s/_\w_sites/_sites/;
+					$colnames{$ptm_type}{$i} = $colname;
+					$col2residue{$ptm_type}{$i} = $residue;
 	      } 
 	      next;
 	    }
@@ -1662,33 +1662,41 @@ sub generate_html_from_file {
 	    $ptm_type = $1;
 	    ## add link to col1
 	    if ($row->[0]=~ /^ptm_coverage_[^\|]+\|([^\|]+)\|(.*)$/){
-	      $row->[0] = "<a href='$ptm_summary_url$2\&ptm_type=$ptm_type' target='_blank' title='get ptm protein list'>$1</a>";
+        $ptm_summary_url = "$ptm_summary_url$2";
+	      $row->[0] = "<a href='$ptm_summary_url\&ptm_type=$ptm_type' target='_blank' title='get ptm protein list'>$1</a>";
 	    }else{
 	      $row->[0] = $proteome;
 	    }
 	    if ($proteome =~ /(core|^Araport11$|^NeXtProt$)/i && ! $ptm_plot_data{$ptm_type}{data} ){
+        my %probability_constraint =  ('nP.80-.95' => 1,
+                                       'nP.95-.99' => 2,
+                                       'nP.99-1' => 3,
+                                       'no-choice' => 4);
 	      foreach my $i(1..scalar @$row -1){ 
-		my $val =  $row->[$i];
-		$val =~ s/\s.*//;
-		$val =~ s/,//g;
-		if ($colnames{$ptm_type}{$i} =~ /nP(\.\d+)\-([\.\d]+)/){
-		  my $xlabel = '';
-		  if ($2 != 1){
-		    $xlabel = "0$1<=nP<0$2";
-		  }else{
-		    $xlabel = "nP>=0$1";
-		  }
-		  push @{$ptm_plot_data{$ptm_type}{data}{$col2residue{$ptm_type}{$i}}},["$xlabel",$val];
-		}elsif($colnames{$ptm_type}{$i} =~ /no-choice/){
-		  push @{$ptm_plot_data{$ptm_type}{data}{$col2residue{$ptm_type}{$i}}},["$colnames{$ptm_type}{$i}",$val];
-		}
+					my $val =  $row->[$i];
+					$val =~ s/\s.*//;
+					$val =~ s/,//g;
+          my $url = '<a href="' . $ptm_summary_url . 
+                    "&ptm_type=$ptm_type&probability_constraint=$probability_constraint{$colnames{$ptm_type}{$i}}\">";
+          $url =~ s/proteinView/proteinResidueView/;
+					if ($colnames{$ptm_type}{$i} =~ /nP(\.\d+)\-([\.\d]+)/){
+						my $xlabel = '';
+						if ($2 != 1){
+							$xlabel = $url . "0$1<=nP<0$2</a>";
+						}else{
+							$xlabel = $url . "nP>=0$1</a>";
+						}
+						push @{$ptm_plot_data{$ptm_type}{data}{$col2residue{$ptm_type}{$i}}},["$xlabel",$val];
+					}elsif($colnames{$ptm_type}{$i} =~ /no-choice/){
+						push @{$ptm_plot_data{$ptm_type}{data}{$col2residue{$ptm_type}{$i}}},["$url$colnames{$ptm_type}{$i}</a>",$val];
+					}
 	      }
 	      $ptm_plot_data{label} = $proteome;
 	    }
 	    my $n = scalar @$row;
 	    if ($counter == 0){
 	      for my $i (1..$n-1){
-		push @{$column_align{$pre_table}}, 'center';
+					push @{$column_align{$pre_table}}, 'center';
 	      }
 	    } 
 	    $counter++;

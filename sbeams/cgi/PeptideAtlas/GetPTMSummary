@@ -288,6 +288,7 @@ sub handle_request {
     constraint_value=>$parameters{presence_level_constraint} );
   return if ($presence_level_clause eq '-1');
 
+
   #### Build BEST_PROBABILITY constraint
   my $probability_clause = ''; 
 	my %probability_selections =  (1 => 'PTM.nP95>0',
@@ -381,7 +382,7 @@ sub handle_request {
 
   #### Build ROWCOUNT constraint
   $parameters{row_limit} = 50000 unless ($parameters{row_limit} > 0 && $parameters{row_limit}<=1000000);
-  $parameters{row_limit} = '' if ($parameters{proteome_component} && $parameters{display_options} =~ /proteinView/);
+  $parameters{row_limit} = '' if ($parameters{proteome_component});
 
   my $limit_clause = "TOP $parameters{row_limit}" if ($parameters{row_limit});
   my @column_array = (
@@ -691,6 +692,10 @@ sub postProcessResultset {
   my $n_rows = scalar(@{$resultset_ref->{data_ref}});
   my $cols = $resultset_ref->{column_hash_ref};
   my $proteome_component = $parameters{proteome_component} || '';
+	$proteome_component =~ /^(.*),(.*)$/;
+	my $source_type = $1;
+	my @patterns = split(/;/, $2);
+	my @data=();
 
   if ($parameters{display_options} =~ /proteinResidueView/){ 
      for (my $i=0; $i<$n_rows; $i++) {
@@ -705,16 +710,21 @@ sub postProcessResultset {
           if ($resultset_ref->{data_ref}->[$i]->[$j] == 0){
             delete $resultset_ref->{data_ref}->[$i]->[$j];
           }
-        } 
+        }
+        if ($proteome_component ne ''){
+           my $biosequence_name = $resultset_ref->{data_ref}->[$i]->[$cols->{biosequence_name}];
+           my $biosequence_desc = $resultset_ref->{data_ref}->[$i]->[$cols->{biosequence_desc}];
+           my $matched = $sbeamsMOD->match_proteome_component(pattern=>\@patterns,
+                                                      source_type => $source_type,
+                                                      biosequence_name => $biosequence_name,
+                                                      biosequence_desc => $biosequence_desc);
+           next if ( $resultset_ref->{data_ref}->[$i]->[$cols->{relationship_name}] eq 'identical');
+           next if (! $matched);
+        }
+        push @data, $resultset_ref->{data_ref}->[$i]; 
      }
   }elsif($parameters{display_options} =~ /proteinView/){
-
 		return if ($proteome_component eq '');
-
-		$proteome_component =~ /^(.*),(.*)$/;
-		my $source_type = $1;
-		my @patterns = split(/;/, $2);
-		my @data=();
 		for (my $i=0; $i<$n_rows; $i++) {
 			my $biosequence_name = $resultset_ref->{data_ref}->[$i]->[$cols->{biosequence_name}];
 			my $biosequence_desc = $resultset_ref->{data_ref}->[$i]->[$cols->{biosequence_desc}];
@@ -727,8 +737,8 @@ sub postProcessResultset {
 			 push @data, $resultset_ref->{data_ref}->[$i];
 
 		 }
-		 $resultset_ref->{data_ref} = \@data;
   }
+	$resultset_ref->{data_ref} = \@data;
   return 1;
 
 } # end postProcessResult
