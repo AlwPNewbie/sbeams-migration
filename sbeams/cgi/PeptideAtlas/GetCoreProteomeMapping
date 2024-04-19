@@ -694,7 +694,7 @@ sub postProcessResultset {
 
   for (my $i=0; $i<$n_rows; $i++) {
     my $nonredundant_acc =  '';
-    if ($build_name !~ /borrelia/i){
+    if ($resultset_ref->{data_ref}->[$i]->[$cols->{nextprot_accession}]){
        $nonredundant_acc = $resultset_ref->{data_ref}->[$i]->[$cols->{nextprot_accession}];
     }else{
        $nonredundant_acc = $resultset_ref->{data_ref}->[$i]->[$cols->{primary_isoform}];
@@ -707,4 +707,3 @@ sub postProcessResultset {
   $resultset_ref->{data_ref} = \@new_result_set;
 
 } # end postProcessResult
-
