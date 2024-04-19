@@ -483,7 +483,7 @@ sub handle_request {
     ["resource_url","SKL.resource_url","resource_url"],
     ["organism_id","O.organism_id","organism_id"],
     ["organism_name","O.organism_name","organism_name"],
-    ["presence_level","(CASE WHEN PROTLEVEL.presence_level is NULL THEN 'not detected' ELSE PROTLEVEL.presence_level END)", "Protein Level"],
+    ["presence_level","(CASE WHEN PROTLEVEL.presence_level is NULL THEN 'not_detected' ELSE PROTLEVEL.presence_level END)", "Protein Level"],
     ["resource_gene_name","SKE_GENE.resource_gene_name", "Gene Name"],
     ["resource_gene_symbol","SKE_GENE.resource_gene_symbol", "Gene Symbol"],
     ["search_key_id", "SKE.search_key_id", "search_key_id"],
@@ -514,7 +514,7 @@ sub handle_request {
             ('indistinguishable',8),
             ('subsumed',9),
             ('identical',10),
-            ('',11)
+            ('not_detected',11)
       )AS PRESENCE_LEVEL_ORDER (name, id)
    ~;
 
@@ -674,7 +674,8 @@ sub handle_request {
 				$select_sql
 				JOIN 
 				$presence_level_order
-				ON (LEFT(PROTLEVEL.presence_level, CHARINDEX(' ', PROTLEVEL.presence_level + ' ') - 1) = PRESENCE_LEVEL_ORDER.name) 
+				ON (LEFT(PROTLEVEL.presence_level, CHARINDEX(' ', PROTLEVEL.presence_level + ' ') - 1) = PRESENCE_LEVEL_ORDER.name)
+           OR PROTLEVEL.presence_level is null and PRESENCE_LEVEL_ORDER.name ='not_detected' 
 				$where_clause
 				) RESULT
       JOIN
@@ -845,6 +846,7 @@ sub handle_request {
 						JOIN 
 						$presence_level_order
 						ON (LEFT(PROTLEVEL.presence_level, CHARINDEX(' ', PROTLEVEL.presence_level + ' ') - 1) = PRESENCE_LEVEL_ORDER.name)
+               OR PROTLEVEL.presence_level is null and PRESENCE_LEVEL_ORDER.name ='not_detected'
 						WHERE 1 = 1
 							$search_types_clause
 							AND SKE.search_key_id in ($search_key_id_str)
@@ -956,7 +958,6 @@ sub handle_request {
 						base_url=>$base_url,
 	      );
         #$sbeams->display_sql(sql=>$sql);
-
 			}else{
 				if($n_fuzzy_results > 1){
 					print "<BR>Wild card search results: <BR>" ;
