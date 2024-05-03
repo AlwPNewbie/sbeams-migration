@@ -35,6 +35,7 @@ use vars qw(@ISA @EXPORT
     $TBAT_SAMPLE
     $TBAT_SAMPLE_CATEGORY 
     $TBAT_SAMPLE_PUBLICATION
+    $TBAT_SAMPLE_METADATA
     $TBAT_ATLAS_BUILD_SAMPLE
     $TBAT_ATLAS_BUILD_SEARCH_BATCH
     $TBAT_PEPTIDE
@@ -214,6 +215,7 @@ require Exporter;
     $TBAT_SAMPLE
     $TBAT_SAMPLE_CATEGORY
     $TBAT_SAMPLE_PUBLICATION
+		$TBAT_SAMPLE_METADATA
     $TBAT_ATLAS_BUILD_SAMPLE
     $TBAT_ATLAS_BUILD_SEARCH_BATCH
     $TBAT_PEPTIDE
@@ -398,6 +400,7 @@ $TBAT_ATLAS_SEARCH_BATCH    = "${mod}atlas_search_batch";
 $TBAT_SAMPLE                = "${mod}sample";
 $TBAT_SAMPLE_CATEGORY       = "${mod}sample_category";
 $TBAT_SAMPLE_PUBLICATION    = "${mod}sample_publication";
+$TBAT_SAMPLE_METADATA       = "${mod}sample_metadata";
 $TBAT_ATLAS_BUILD_SAMPLE    = "${mod}atlas_build_sample";
 $TBAT_ATLAS_BUILD_SEARCH_BATCH  = "${mod}atlas_build_search_batch";
 $TBAT_PEPTIDE               = "${mod}peptide";
