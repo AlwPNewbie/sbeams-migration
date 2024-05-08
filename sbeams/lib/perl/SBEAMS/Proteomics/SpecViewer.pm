@@ -94,7 +94,7 @@ sub convertMods {
 	}
     }
 
-    #### Support new ProForma style
+    #### Support new ProForma style N terminal mod
     if ( $sequence =~ s/^\[(.+)\]-// ) {
 	my $mod = $1;
         my $mass_diff = getMassdiffByName(name=>$mod);
@@ -114,6 +114,18 @@ sub convertMods {
 	} else {
 	    print STDERR "ERROR: C-terminal mass modification $mod is not supported yet\n";
 	    return(undef);
+	}
+    }
+
+    #### Support new ProForma style C terminal mod
+    if ( $sequence =~ s/-\[(.+)\]$// ) {
+	my $mod = $1;
+        my $mass_diff = getMassdiffByName(name=>$mod);
+	if (defined($mass_diff)) {
+	    $cterm = $mass_diff;
+        } else {
+	    print STDERR "ERROR: C-terminal mass modification $mod is not supported yet\n";
+	    return;
 	}
     }
 
@@ -196,6 +208,7 @@ sub convertMods {
 	#### Else this kind of mass modification does not fit a pattern that is handled
 	} else {
 	    print STDERR "ERROR: Unresolved mass modification in '$sequence'\n";
+	    print("ERROR: Unresolved mass modification in '$sequence'<BR>\n");
 	    return(undef);
 	}
     }
