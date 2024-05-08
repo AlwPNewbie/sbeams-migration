@@ -1762,13 +1762,14 @@ sub interpretUSI {
   my $charge = $usi->{charge};
 
   #### If the peptidoform has mass mods in it, then convert it to TPP notation
-  if ( $peptidoform =~ /[\[\{\(]/ ) {
-    #print "<PRE>\n";
-    #print "INFO: Peptidoform=$peptidoform\n";
-    my $pep = Proteomics::Sequence::Peptide->new(sequenceString=>$peptidoform);
-    $peptidoform = $pep->{modifiedTPP4SequenceString};
-    #print "</PRE>\n";
-  }
+  #### Disabled by Eric 2024-05-08. No longer necessary
+  #if ( $peptidoform =~ /[\[\{\(]/ ) {
+  #  #print "<PRE>\n";
+  #  #print "INFO: Peptidoform=$peptidoform\n";
+  #  my $pep = Proteomics::Sequence::Peptide->new(sequenceString=>$peptidoform);
+  #  $peptidoform = $pep->{modifiedTPP4SequenceString};
+  #  #print "</PRE>\n";
+  #}
 
 
   #### If this is a PXL, just return the interpreted USI
