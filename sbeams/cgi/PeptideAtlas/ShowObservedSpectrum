@@ -479,8 +479,13 @@ sub processRequest {
 	my ($seq, $chg, $mz, $massdiff, $mod_seq, $spectrum_id, $spectrum_name, $start_scan,$fragmentation_type_id) = @{$row};
 	$peptidoform = $mod_seq unless ( $peptidoform );
 	$charge = $chg;
-	$observedPrecursorMz = int( ( $mz + $massdiff/$chg ) *10000 + 0.5) / 10000;
-	$parameters{'spectrum_id'} = $spectrum_id;
+
+	#### Eric changed 2024-05-08 because it seems that a weird mz is coming from the database for Ecoli query:
+	if ( ! defined($observedPrecursorMz) ) {
+          $observedPrecursorMz = int( ( $mz + $massdiff/$chg ) *10000 + 0.5) / 10000;
+	}
+
+        $parameters{'spectrum_id'} = $spectrum_id;
 	$spectrumName = $spectrum_name;
 	$scanNumber = $start_scan;
 	$parameters{'fragmentation_type_id'} = $fragmentation_type_id;
