@@ -3724,6 +3724,7 @@ sub plotly_barchart {
 					y: y$counter,
 					name: '$names->[$counter]', 
 					type: 'bar',	
+          hoverinfo: 'text',
           $bartext
 				  $marker	
 				};
@@ -3758,9 +3759,11 @@ sub plotly_barchart {
                   $yticktype
                  },
           $layout_title,
+          hovermode: 'closest',
           margin:{$layoutmargin}
           $bargap
         };
+        // Use 'closest' to show only the hover label without marker
         Plotly.newPlot('$divname', data, layout,config);
    ~;
   my $chart = qq~
