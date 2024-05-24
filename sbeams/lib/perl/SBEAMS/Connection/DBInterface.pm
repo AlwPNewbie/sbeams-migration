@@ -33,9 +33,6 @@ use POSIX qw(strftime);
 
 use Digest::MD5 qw( md5_hex );
 use JSON;
-use GD::Graph::bars;
-use GD::Graph::xypoints;
-
 
 #use Data::ShowTableTest;
 use Data::ShowTable;
@@ -1012,6 +1009,7 @@ sub selectSeveralColumns {
       $sth = $dbh->prepare($sql) or croak $dbh->errstr;
       $rv  = $sth->execute or croak $dbh->errstr;
     };
+
     if ( $@ ) {
       $log->error( "Error running SQL: $sql\n $@" );
       croak( $@ );
@@ -2856,6 +2854,7 @@ sub displayResultSet {
     my $base_url = $args{'base_url'} || '';
     my $query_parameters_ref = $args{'query_parameters_ref'};
     my $cytoscape = $args{'cytoscape'} || undef;
+		my $tab_label = $args{'tab_label'} || 'Resultset';
 
     # Improved formatting capacity, DSC 2005-08-09
     my $no_escape = $args{no_escape} || 0;
@@ -3144,7 +3143,7 @@ sub displayResultSet {
 
       use JSON;
       my $json = new JSON;
-      my @resultset;
+      my @resultset = ();
       for my $datarow ( @{$resultset_ref->{data_ref}} ) {
         my %map;
         for ( my $i = 0; $i < scalar( @{$datarow} ); $i++ ) {
@@ -3319,7 +3318,7 @@ sub displayResultSet {
         @TDformats=('NOWRAP');
       }
 
-      print $self->addTabbedPane(label => "Resultset") if $args{use_tabbed_panes};
+      print $self->addTabbedPane(label => $tab_label) if $args{use_tabbed_panes};
       if ($args{column_help} && $output_mode eq 'html') {
 	my $obs_help = "<TABLE><TR><TD ALIGN=left>$args{column_help}</TD></TR></TABLE>\n";
 	print $obs_help;
@@ -3831,14 +3830,6 @@ sub displayResultSetPlot_plotly {
     $rs_params{rs_plot_type} ||= '';
     my $result = { result => 'NA' };
     if ( $rs_params_ref->{apply_action} && $rs_params_ref->{apply_action} eq 'VIEWPLOT' ) {
-  
-      # This won't work if there are multiple plots per page - hardcoded 
-      # div name, multiple js rss specs
-      print qq~
-      <!-- Latest compiled and minified plotly.js JavaScript -->
-      <script type="text/javascript" src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-      ~;
-
       my @mouseover_text;
       my $mo_idx;
       if ( $args{mouseover_column} ) {
@@ -3857,7 +3848,7 @@ sub displayResultSetPlot_plotly {
             $value =~ s/^\s+//;
             $value =~ s/\s+$//;
             if ( !$has_char{$column_index} ) {
-              $has_char{$column_index}++ unless $value =~ /^\d*$/;
+              $has_char{$column_index}++ unless $value =~ /^[\+\-\d\.]+$/;
             }
             push(@{$column_info->{$column_index}->{data}},$value);
           }
@@ -3870,95 +3861,28 @@ sub displayResultSetPlot_plotly {
         }
       }
   
-      my $plot = qq~ 
-      <tr><td colspan="2"><div id="plot_div" style="width:800px;height:600;"></div></td></tr>
-      ~;
+      my $plot = ''; 
 
       my @data;
       # If the plot_type is histogram, calc bins/cnts/titles 
       if ( $rs_params{rs_plot_type} =~ /histogram/) {
-        my $plot_data = '';
 				my $hdata = $column_info->{A}->{data};
         if (! $rs_params{groupbyvalue}){
-			
-					if ( $rs_params{rs_plot_type} ne 'discrete_histogram') { # continuous
 						$result = $self->histogram( data_array_ref => $hdata, quiet => 1 );
-						if ( $result->{result} ne 'SUCCESS' ) {
-							print $self->makeInfoText('Unable to compute continuous histogram, falling back to discrete<BR>');
-						}
-					}
-
-					if ( $result->{result} eq 'SUCCESS' ) { # successful continuous
-						my $xstr = join( ',', @{$result->{xaxis}} );
-						my $ystr = "'" . join( "','", @{$result->{yaxis}} ) . "'";
-
-						my $data_label = ( scalar(keys(@mouseover_text)) ) ? "'" . join( "','", @mouseover_text) . "'" : $xstr;
-
-						$plot_data = qq~
-						 x: [$xstr],
-						 y: [$ystr],
-						 type: 'bar',
-						~;
-					} else { # discrete
-						 # Deprecated, calculating below.
-	#          $result = $self->discrete_value_histogram( data_array_ref => $hdata );
-						
-						if ( $result->{result} ne 'SUCCESS' ) {
-
-							my %tally;
-							for my $val ( @{$hdata} ) {
-								$val = '' if !defined $val;
-								$val =~ s/^\s+//;
-								$val =~ s/\s+$//;
-								$val = 'n/a' if $val eq '';
-								$tally{$val}++;
-							}
-							my @keys = ( $has_char{A} ) ? sort(keys(%tally)) : sort{$a<=>$b}(keys(%tally));
-							my $hcnt = scalar( @{$hdata} );
-							for my $key ( @keys ) {
-								my $perc = ( $hcnt ) ? sprintf( "%0.1f", ($tally{$key}/$hcnt)*100 ) : 0;
-								$result->{xaxis} ||= [];
-								push @{$result->{xaxis}}, $key;
-								$result->{yaxis} ||= [];
-								push @{$result->{yaxis}}, $tally{$key};
-								$result->{xaxis_disp} ||= [];
-								push @{$result->{xaxis_disp}}, "$key ($perc " . '%)';
-							}
-							$result->{result} = 'SUCCESS';
-						}
-
-						if (! $result->{yaxis} || ! $result->{xaxis_disp}){
-							$result=undef; 
-						}else{
-							my $ystr = join( ',', @{$result->{yaxis}} );
-							my $xstr = "'" . join( "','", @{$result->{xaxis_disp}} ) . "'";
-
-							$plot_data = qq~
-							 y: [$xstr],
-							 x: [$ystr],
-							 type: 'bar',
-               orientation: 'h'
-							~;
-						}
-          }
-					if ($result->{result} ne 'SUCCESS') {
-						print "ERROR: Unable to calculate histogram for column ".$rs_params{rs_columnA} ;
-						$result = undef; 
-					} else {
-						$plot .= qq~
-						<script type="text/javascript" charset="utf-8">
-						var data = [
-						{
-						 $plot_data
-						}
-						];
-            var layout = {margin: {l: 200,'pad':10}};
-						Plotly.newPlot('plot_div', data, layout);
-						</script>
-						~;
-					}
+					  my @data = grep ($_, @$hdata);	
+            if (! @data) {
+               print $self->makeInfoText( "&nbsp;&nbsp; No resultsets available to make the plot" ); 
+            }else{
+							my $xstr = "'" . join( "','", @data ) . "'";
+							#my $data_label = ( scalar(keys(@mouseover_text)) ) ? "'" . join( "','", @mouseover_text) . "'" : $xstr;
+							$plot .= $self->draw_plot(plot_type => 'histogram',
+                                        x => [($xstr)],
+                                        xtitle => "$column_info->{A}->{name}",
+                                        );
+						  $result->{result} = 'SUCCESS';
+            }
         }else{
-          my ($hdata_a, $hdata_b, $is_discrete);
+          my ($hdata_a, $hdata_b,$is_discrete);
           my $groupby_col = $rs_params{groupbycolumn};
           my $groupby_value = $rs_params{groupbyvalue};
           my $is_equal = $rs_params{is_equal};
@@ -3970,11 +3894,10 @@ sub displayResultSetPlot_plotly {
           $groupby_value =~ s/\s+$//;
 
           my $histnorm = '';
-          my $y_label = "'Count'";
+          my $y_label = "Count";
           my $counter=1;
-          $histnorm = "histnorm: 'percent'" if ($rs_params{histnorm} eq 'on');
+          $histnorm = 'percent' if ($rs_params{histnorm} eq 'on');
 
-          $plot .= '<script type="text/javascript" charset="utf-8">'; 
           my @n = grep (/[^\d\.]/, @{$column_info->{$data_col}->{data}});
           $is_discrete = 1 if (@n);
           for (my $i = 0; $i< @{$column_info->{$data_col}->{data}}; $i++){
@@ -4005,54 +3928,33 @@ sub displayResultSetPlot_plotly {
               }
             }
           }
-          if ($is_discrete){
-            $plot .= "var xa= ['" . join("','", @$hdata_a) . "'];\n";
-            $plot .= "var xb= ['" . join("','", @$hdata_b) . "'];\n";
+          if (! $hdata_a || ! $hdata_b){ 
+             print $self->makeInfoText( "&nbsp;&nbsp; No resultsets available to make the plot" ); 
           }else{
-						$plot .= 'var xa= [' . join(",", @$hdata_a) . "];\n";
-						$plot .= 'var xb= [' . join(",", @$hdata_b) . "];\n";
-          }
-          my $xname1 = "$groupby_value";
-          my $xname2 = "others";
-
-          $xname1 = "not '$groupby_value'" if ($is_equal eq 'no');
-          $xname2 = 'All' if ($compare_to eq 'all');
-          $plot .= qq~
-							var trace1 = {
-								x: xa,
-								name: "$xname1",
-								//opacity: 0.5, 
-								type: "histogram",
-								bingroup: '1',
-							  $histnorm 
-							};
-							var trace2 = {
-								x: xb,
-								name: "$xname2",
-								//opacity: 0.5,
-								type: "histogram",
-								bingroup: '1',
-							  $histnorm 
-							};
-							var data = [trace1, trace2];
-          ~;
-        my $y_label = "'Count'";
-        $y_label = "'%'" if ($rs_params{histnorm} eq 'on');
-        $plot .= qq~
-           var layout = {
-							barmode: "bar", 
-							xaxis: {ticklabeloverflow:'allow'}, 
-							yaxis: {title: $y_label},
-              margin: {b: 100,'pad': 10},
-						};
-						Plotly.newPlot('plot_div', data, layout);
-            </script>
-         ~;
-         $result->{result} = 'SUCCESS'; 
+            my ($xa, $xb);
+						if ($is_discrete){
+							$xa = "'" . join("','", @$hdata_a) . "'";
+						  $xb =  "'" . join("','", @$hdata_b) . "'";	
+						}else{
+						  $xa = join(",", @$hdata_a);	
+						  $xb = join(",", @$hdata_b);	
+						}
+						my $xname1 = "$groupby_value";
+						my $xname2 = "others";
+						$xname1 = "not '$groupby_value'" if ($is_equal eq 'no');
+						$xname2 = 'All' if ($compare_to eq 'all');
+						$plot .= $self->draw_plot(  plot_type => 'histogram',
+                                        x => [($xa,$xb)],
+                                        ytitle => $y_label,
+                                        histnorm => $histnorm,
+                                        xtitle => $column_info->{A}->{name},
+                                        trace_names => [($xname1,$xname2)], 
+                                        );
+					 $result->{result} = 'SUCCESS';
+         } 
        }
       #### If the plot_type is xypoints, plot it
       } elsif ( $rs_params{rs_plot_type} eq 'xypoints') {
-
         my $label;
         my $regex_tag = $args{mouseover_tag} || '%' . $mo_idx . 'V';
 
@@ -4067,44 +3969,65 @@ sub displayResultSetPlot_plotly {
           }else{  
 						my $xstr = join( ',', @{$column_info->{A}->{data}} );
 						my $ystr = join( ',', @{$column_info->{B}->{data}} );
-						my $data_label = ( scalar(keys(@mouseover_text)) ) ? "'" . join( "','", @mouseover_text) . "'" : $xstr;
+            my $data_label = ( scalar(keys(@mouseover_text)) ) ? "'" . join( "','", @mouseover_text) . "'" : $xstr;
 
-						# Print plotting code
-						$plot .= qq~ 
-						<script type="text/javascript" charset="utf-8">
-						var trace = {
-						 x: [$xstr],
-						 y: [$ystr],
-						 mode: 'markers',
-						 type: 'scatter',
-						 text: [$data_label],
-						 marker: { size: 4 }
-						 };
-						 var data = [ trace ];
-						 var layout = {
-						 title:'$column_info->{A}->{name} vs $column_info->{B}->{name}',
-						 // highlight closest in x,y sense
-						 hovermode: 'closest',
-						 };
-						 Plotly.newPlot('plot_div', data, layout);
-						 var myPlot = document.getElementById('plot_div');
-
-						 // Add plotly_click event handler to allow click to link 
-						 myPlot.on('plotly_click', function( data ){
-							 for(var i=0; i < data.points.length; i++){
-								 var idx = data.points[i]['pointNumber'];
-								 var seq = data.points[i]['data']['text'][idx];
-								 var url = "$args{mouseover_url}";
-								 url = url.replace('$regex_tag',seq);
-								 window.open(url);
-							 };
-						 });
-						</script>
-						~;
+						$plot .= $self->draw_plot(  plot_type => 'scatter',
+														x => [($xstr)],
+                            y => [($ystr)],
+													  title => "$column_info->{A}->{name} vs $column_info->{B}->{name}",
+                            data_label => $data_label,
+                            xtitle => $column_info->{A}->{name},
+                            ytitle => $column_info->{B}->{name}	
+														);
 						$result->{result} = 'SUCCESS';
           }
         }
-      } else { # unknow plot type
+      }elsif ( $rs_params{rs_plot_type} =~ /heatmap/) {
+         ## get data from numeric columns 
+         my $cols = $resultset_ref->{column_hash_ref};
+         my %data = ();
+
+         my $n_rows = scalar(@{$resultset_ref->{data_ref}});
+         if ($n_rows <= 30  && scalar keys %$cols <=30){
+					 for (my $i=0; $i<$n_rows; $i++) {
+							foreach my $col_name(keys %$cols){
+								push @{$data{$col_name}},  $resultset_ref->{data_ref}->[$i]->[$cols->{$col_name}];
+							}
+					 }
+					 my $zstr = '';
+					 my $xstr = '';
+					 my $ystr = '';
+					 LOOP:foreach my $col_name (sort {$a cmp $b} keys %data){
+             my $idx=0;
+						 foreach my $val (@{$data{$col_name}}){
+							 $val =~ s/[\r\n\s]//g;
+							 if ($val ne '' && $val !~ /^[\.\d\-]+$/){
+								 next LOOP;
+							 }
+               $data{$col_name}->[$idx] = 'NA' if ($val eq '');
+               $idx++;
+						 }
+						 $zstr .= join(",", @{$data{$col_name}}) .","; 
+             $ystr .= "'$col_name',";
+					 }
+           if ($zstr){
+						 $xstr = "'". join("','", @{$data{'Biosequence Name'}}) ."'" if ($data{'Biosequence Name'}); 
+						 $zstr =~ s/,$//;
+						 $ystr =~ s/,$//;
+						 $plot .= $self->draw_plot(  plot_type => 'heatmap',
+																					x => [($xstr)],
+																					y => [($ystr)],
+																					z => [($zstr)],
+																					);
+							$result->{result} = 'SUCCESS';
+            }else{
+              print $self->makeInfoText( "&nbsp;&nbsp; need numeric value to draw heatmap" );
+            }
+          }else{
+             print $self->makeInfoText( "&nbsp;&nbsp; Please limit the result to less than 30 rows/columns" );
+          }
+
+      }else { # unknow plot type
         print STDERR "Unknown plot type $rs_params{rs_plot_type}\n";
         $result = undef; 
       }
@@ -4122,13 +4045,17 @@ sub displayResultSetPlot_plotly {
      ~;
 
     my %plot_type_names = (
-      'histogram'=>'Continuous Value Histogram of Column A',
-      'discrete_histogram'=>'Discrete Value Histogram of Column A',
+      'histogram'=>'Histogram of Column A',
+      'ghistogram'=>'Histogram of Column A Group by Column B',
       'xypoints'=>'Scatterplot B vs A',
     );
+    if ($parameters{QUERY_NAME} =~ /GetProteinsByExperiment/i && 
+        $parameters{display_options} =~ /compareExp/){
+       $plot_type_names{'heatmap'} = 'Heatmap';
+    }
 
     $rs_params{rs_plot_type} ||= '';
-    foreach $element ('histogram','discrete_histogram','xypoints') {
+    foreach $element (keys %plot_type_names) {
       my $selected_flag = '';
       my $option_name = $plot_type_names{$element} || $element;
       $selected_flag = 'SELECTED' if $element eq $rs_params{rs_plot_type};
@@ -4168,8 +4095,8 @@ sub displayResultSetPlot_plotly {
     print qq~
       <TR><TD BGCOLOR="#E0E0E0">GroupBy</TD>
         <TD><SELECT NAME="groupbycolumn">
-        <option $selectedA value="A">Column A</OPTION>
         <option $selectedB value="B">Column B</OPTION>
+        <option $selectedA value="A">Column A</OPTION>
         </SELECT>
         &nbsp;&nbsp;<label for="groupbyvalue" style="background-color:#E0E0E0">Selected Value</label>
         <SELECT NAME="is_equal">
@@ -4224,311 +4151,6 @@ sub displayResultSetPlot_plotly {
 
 } # End displayResultsetPlot_plotly
 
-
-###############################################################################
-# displayResultSetPlot
-#
-# Displays a plot of data based on the information in the ResultSet
-###############################################################################
-sub displayResultSetPlot {
-    my $self = shift;
-    my %args = @_;
-
-
-    #### If the output mode is not html, do not make plot
-    if ($self->output_mode() ne 'html') {
-      return;
-    }
-
-
-    my ($i,$element,$key,$value,$line,$result,$sql);
-
-    #### Process the arguments list
-    my $resultset_ref = $args{'resultset_ref'};
-    $rs_params_ref = $args{'rs_params_ref'};
-    my $query_parameters_ref = $args{'query_parameters_ref'};
-    my $column_titles_ref = $args{'column_titles_ref'};
-    my $base_url = $args{'base_url'};
-
-    my %rs_params = %{$rs_params_ref};
-    my %parameters = %{$query_parameters_ref};
-
-    #print "here1<BR>rs_plot_type=$rs_params{rs_plot_type}<BR>rs_columnA=$rs_params{rs_columnA}\n";
-    #### If there is not a specific request to make a plot, then return
-    #unless ($rs_params{rs_plot_type} && $rs_params{rs_columnA} gt "") {
-    #  return;
-    #}
-
-
-    #### Start form
-    my $BR = "\n";
-    if ($self->output_mode() eq 'html') {
-      $BR = "<BR>\n";
-      my $spacer = $args{use_tabbed_panes} ? $self->addTabbedPane(label => "Plot") : '<BR><BR>';
-      print qq~$spacer
-      <TABLE WIDTH="100%" BORDER=0>
-      <FORM METHOD="POST">
-      ~;
-    }
-
-
-    my $discard_non_numeric = 1;
-    if (defined($rs_params{rs_plot_type}) &&
-	$rs_params{rs_plot_type} eq 'discrete_histogram') {
-      $discard_non_numeric = 0;
-    }
-
-
-    #### If rs_columnA,B is defined, extract it
-    my $column_info;
-    foreach my $column_index ( 'A','B' ) {
-      $column_info->{$column_index}->{name} = '';
-      $column_info->{$column_index}->{data} = ();
-      if (defined($rs_params{"rs_column$column_index"}) &&
-	  $rs_params{"rs_column$column_index"} gt '') {
-        foreach my $element (@{$resultset_ref->{data_ref}}) {
-          my $value = $element->[$rs_params{"rs_column$column_index"}];
-	  if ($discard_non_numeric) {
-	    if ($value =~ /([\d\.\-\+]+)/) {
-	      $value = $1;
-	    } else {
-	      $value = '';
-	    }
-	  }
-          push(@{$column_info->{$column_index}->{data}},$value);
-        }
-        $column_info->{$column_index}->{name} = 
-          $column_titles_ref->[$rs_params{"rs_column$column_index"}] ||
-          $resultset_ref->{column_list_ref}->[$rs_params{"rs_column$column_index"}];
-      }
-    }
-
-
-    #### Create a temp file name to write to
-    my $tmpfile = "plot.$$.@{[time]}.png";
-    #print "Writing PNG to: $PHYSICAL_BASE_DIR/images/tmp/$tmpfile\n";
-
-
-    #### Make the plot
-    my $graph;
-    my @data;
-
-
-    #### If the plot_type is a continuous-value histogram, plot it
-    if (defined($rs_params{rs_plot_type}) &&
-	$rs_params{rs_plot_type} eq 'histogram') {
-      $result = $self->histogram(
-        data_array_ref=>$column_info->{A}->{data},
-      );
-
-      if ($result->{result} eq 'SUCCESS') {
-
-        #### Populate a data structure to plot
-        @data = (
-          $result->{xaxis_disp},
-          $result->{yaxis},
-        );
-
-        #### Create the histogram canvas
-        $graph = GD::Graph::bars->new(640, 500);
-
-        #### Set the various plot parameters
-        $graph->set(
-            x_label           => $column_info->{A}->{name},
-            y_label           => 'Count',
-            title             => "Histogram of ".$column_info->{A}->{name},
-            x_tick_length     => -4,
-            axis_space        => 6,
-            x_label_position  => 0.5,
-            y_min_value       => 0,
-            x_halfstep_shift  => 0,
-        );
-
-      } else {
-        print "ERROR: Unable to calculate histogram for column ".
-          $rs_params{rs_columnA};
-        $result = undef;
-      }
-
-
-    #### If the plot_type is a discrete-value histogram, plot it
-    } elsif (defined($rs_params{rs_plot_type}) &&
-	$rs_params{rs_plot_type} eq 'discrete_histogram') {
-      $result = $self->discrete_value_histogram(
-        data_array_ref=>$column_info->{A}->{data},
-      );
-
-      if ($result->{result} eq 'SUCCESS') {
-
-        #### Populate a data structure to plot
-        @data = (
-          $result->{xaxis_disp},
-          $result->{yaxis},
-        );
-
-        #### Create the histogram canvas
-        $graph = GD::Graph::bars->new(900, 700);
-
-        #### Set the various plot parameters
-        $graph->set(
-            x_label           => $column_info->{A}->{name},
-            y_label           => 'Count',
-            title             => "Histogram of ".$column_info->{A}->{name},
-            rotate_chart    => 1,
-            y_max_value       => $result->{maximum},
-        );
-
-      } else {
-        print "ERROR: Unable to calculate histogram for column ".
-          $rs_params{rs_columnA};
-        $result = undef;
-      }
-
-
-    #### If the plot_type is xypoints, plot it
-    } elsif (defined($rs_params{rs_plot_type}) &&
-	     $rs_params{rs_plot_type} eq 'xypoints') {
-
-      #### Populate a data structure to plot
-      @data = (
-        $column_info->{A}->{data},
-        $column_info->{B}->{data},
-      );
-      #### Create the histogram canvas
-      $graph = GD::Graph::xypoints->new(640, 500);
-
-      #### Set the various plot parameters
-      $graph->set(
-          x_label           => $column_info->{A}->{name},
-          y_label           => $column_info->{B}->{name},
-          title             => "Plot of ".$column_info->{B}->{name}." vs ".
-                               $column_info->{A}->{name},
-          long_ticks        => 0,
-          marker_size       => 2,
-          x_label_position  => 0.5,
-      );
-
-      #### Define result for later
-      $result = { result=>'SUCCESS' } ;
-
-    #### Else we don't know what to do with this one yet
-    }
-
-
-    #### Generate the plot and store to a file
-    if (defined($result)) {
-      my $gd = $graph->plot(\@data);
-      open(IMG, ">$PHYSICAL_BASE_DIR/images/tmp/$tmpfile") or die $!;
-      binmode IMG;
-      print IMG $gd->png;
-      close IMG;
-    }
-
-
-    #### Provide the link to the image
-    my $imgsrcbuffer = '&nbsp;';
-    $imgsrcbuffer = "<IMG SRC=\"$HTML_BASE_DIR/images/tmp/$tmpfile\">"
-      if (defined($result));
-    if ($self->output_mode() eq 'html') {
-      print qq~
-        <TR><TD COLSPAN="2">$imgsrcbuffer</TD></TR>
-        <TD VALIGN="TOP" WIDTH="50%">
-        <INPUT TYPE="hidden" NAME="rs_set_name" VALUE="$rs_params{set_name}">
-        <TABLE>
-        <TR><TD BGCOLOR="#E0E0E0">Plot Type</TD><TD>
-        <SELECT NAME="rs_plot_type">
-      ~;
-
-    }
-
-    my %plot_type_names = (
-      'histogram'=>'Continuous Value Histogram of Column A',
-      'discrete_histogram'=>'Discrete Value Histogram of Column A',
-      'xypoints'=>'Scatterplot B vs A',
-    );
-
-    foreach $element ('histogram','discrete_histogram','xypoints') {
-      my $selected_flag = '';
-      my $option_name = $plot_type_names{$element} || $element;
-      $selected_flag = 'SELECTED'
-			if (defined($rs_params{rs_plot_type}) &&
-	    $element eq $rs_params{rs_plot_type});
-      print "<option $selected_flag VALUE=\"$element\">$option_name\n";
-    }
-
-    print "</SELECT></TD></TR>";
-
-    foreach my $column_index ( 'A','B' ) {
-      print qq~
-        <TR><TD BGCOLOR="#E0E0E0">Column $column_index</TD>
-        <TD><SELECT NAME="rs_column$column_index">
-      ~;
-
-      #### Create a list box for selecting columnA
-      $i=0;
-      foreach $element (@{$column_titles_ref}) {
-        my $selected_flag = '';
-        $selected_flag = 'SELECTED'
-          if (defined($rs_params{"rs_column$column_index"}) &&
-	      $i == $rs_params{"rs_column$column_index"});
-        print "<option $selected_flag VALUE=\"$i\">$element\n";
-        $i++;
-      }
-      print "</SELECT></TD></TR>\n";
-    }
-
-    my $plot_action = $args{use_tabbed_panes} ? 'VIEWPLOT' : 'VIEWRESULTSET';
-    print qq~
-      <TR><TD></TD><TD>
-      <INPUT TYPE="submit" NAME="apply_action" VALUE="$plot_action">
-      </TD></TR></TABLE>
-      </TD><TD>
-      <TABLE>
-    ~;
-
-
-    foreach my $element (@{$result->{ordered_statistics}}) {
-      print "<TR><TD BGCOLOR=#E0E0E0>$element</TD><TD>$result->{$element}</TD></TR>\n";
-    }
-
-
-    print qq~
-      </TABLE>
-      </TD></TR>
-      </TABLE>
-    ~;
-
-
-    #### Finish the form
-    if ($self->output_mode() eq 'html') {
-      print qq~
-        </FORM>
-      ~;
-
-      my $tab_selected = ($args{rs_params_ref}->{apply_action} eq 'VIEWPLOT') ? '1' : '0';
-
-      print $self->closeTabbedPane(selected=>$tab_selected) if $args{use_tabbed_panes};# close Plot div
-      print "</TABLE>" unless $args{quell_tables};
-    }
-
-
-    #### Print out some debugging information about the returned resultset:
-    if (0 == 1) {
-      print "<BR><BR>resultset_ref = $resultset_ref<BR>\n";
-      while ( ($key,$value) = each %{$resultset_ref} ) {
-        printf("%s = %s<BR>\n",$key,$value);
-      }
-      #print "columnlist = ",
-      #  join(" , ",@{$resultset_ref->{column_list_ref}}),"<BR>\n";
-      print "nrows = ",scalar(@{$resultset_ref->{data_ref}}),"<BR>\n";
-      print "rs_set_name=",$rs_params{set_name},"<BR>\n";
-    }
-
-
-    return 1;
-
-
-} # end displayResultSetPlot
 
 
 #+
@@ -4813,7 +4435,6 @@ sub readResultSet {
 		  $Storable::interwork_56_64bit = $tmp;
 		}
 
-
     #### This also works but is quite slow
     #$indata = "";
     #open(INFILE,"$infile") || die "Cannot open $infile\n";
@@ -4894,6 +4515,7 @@ sub writeResultSet {
 
       $$resultset_file_ref =~ s/SETME/$timestr/g;
     }
+    
     my $resultset_file = $$resultset_file_ref;
 
 
@@ -4926,12 +4548,14 @@ sub writeResultSet {
 
     #### Write out the query parameters
     my $outfile = "$RESULTSET_DIR/${resultset_file}.params";
+
     open(OUTFILE,">$outfile") || die "Cannot open $outfile\n";
     printf OUTFILE Data::Dumper->Dump( [$temp_hash_ref] );
     close(OUTFILE);
     #### Write out the resultset
     $outfile = "$RESULTSET_DIR/${resultset_file}.resultset";
     nstore($resultset_ref,$outfile);
+
     my $mdsum_out = `md5sum $outfile`;
     my @mdsum_out = split( /\s/, $mdsum_out );
     my $rs_mdsum = $mdsum_out[0];
@@ -4973,17 +4597,14 @@ sub writeResultSet {
 
     }
 
-
     #### This also works but is dog slow
     #open(OUTFILE,">$outfile") || die "Cannot open $outfile\n";
     #$Data::Dumper::Indent = 0;
     #printf OUTFILE Data::Dumper->Dump( [$resultset_ref] );
     #close(OUTFILE);
 
-
     #### Update timing info
     $timing_info->{finished_write_resultset} = [gettimeofday()];
-
 
     return 1;
 
@@ -8165,14 +7786,14 @@ sub get_query_parameters_mdsum{
   my $self = shift;
   my $query_parameters_ref = shift;
 
-	my %query_parameters =  ();
-	foreach my $key (keys %$query_parameters_ref){
+	my @query_parameters =  ();
+	foreach my $key (sort {$a cmp $b} keys %$query_parameters_ref){
 		##exclude action and rs_page_number param
 		if ($key !~ /(action|rs_page|upload)/i){
-			$query_parameters{$key} = $query_parameters_ref->{$key};
+			push @query_parameters, "$key:$query_parameters_ref->{$key}";
 		}
 	}
-	my $json = encode_json(\%query_parameters);
+	my $json = encode_json(\@query_parameters);
 	my $param_mdsum = md5_hex( uc($json) );
   return $param_mdsum;
 

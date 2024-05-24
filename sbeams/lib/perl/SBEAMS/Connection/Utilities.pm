@@ -1113,16 +1113,26 @@ sub parseBiosequenceDescriptor {
 
   # Uniprot, from http://www.expasy.ch/sprot/userman.html#AC_line
   # includes varsplic accessions (e.g. P12345-2)
+  if ($rowdata_ref->{biosequence_name} =~ /(tr|sp)/){
+    if ($rowdata_ref->{biosequence_desc} =~ /GN=(\S+)/ ){
+      $rowdata_ref->{biosequence_gene_name} = $1;
+    }
+  }
   if ($rowdata_ref->{biosequence_name} =~ /(^[O-Q]\d\w{3}\d$)/ ||
       $rowdata_ref->{biosequence_name} =~ /(^[O-Q]\d\w{3}\d-\d+$)/ ||
       $rowdata_ref->{biosequence_name} =~ /(^[A-N,R-Z]\d[A-Z]\w\w\d$)/ ||
       $rowdata_ref->{biosequence_name} =~ /(^[A-N,R-Z]\d[A-Z]\w\w\d-\d+$)/) {
     $rowdata_ref->{biosequence_accession} = $1;
-    if ($rowdata_ref->{biosequence_desc} =~ /GN=(\S+)/ ) {
+    if ($rowdata_ref->{biosequence_desc} =~ /GN=(\S+)/ ){ 
       $rowdata_ref->{biosequence_gene_name} = $1;
     }
     $rowdata_ref->{dbxref_id} = '35';  #01/15/13: this used to be 1, which means Swiss-Prot
   }
+   if ($rowdata_ref->{biosequence_name} =~ /gb:VIPR/){
+      if ($rowdata_ref->{biosequence_desc} =~ /Gene Symbol:(\S+)/){
+         $rowdata_ref->{biosequence_gene_name} = $1;    
+      }
+   }
 
   if ($rowdata_ref->{biosequence_name} =~ /^PIR.\:(.+)$/ ) {
      #$rowdata_ref->{biosequence_gene_name} = $1;
@@ -1153,8 +1163,8 @@ sub parseBiosequenceDescriptor {
      $rowdata_ref->{dbxref_id} = '20';
   }
 
-  #### Conversion rules for the  ENSEMBL Human Protein database v 22 - 28
-  if ($rowdata_ref->{biosequence_desc} =~ /^.*(ENSG\d+)\s.*$/) {
+  #### Conversion rules for the  ENSEMBL Human and Mouse Protein database v 22 - 28
+  if ($rowdata_ref->{biosequence_desc} =~ /^.*(ENS\w+\d+)\s.*$/) {
      $rowdata_ref->{biosequence_gene_name} = $1;
      $rowdata_ref->{biosequence_accession} = $rowdata_ref->{biosequence_name};
      $rowdata_ref->{dbxref_id} = '20';
@@ -1176,6 +1186,21 @@ sub parseBiosequenceDescriptor {
      }
      $rowdata_ref->{dbxref_id} = '25';
   }
+  
+  ### Conversion rules for the Honeybee Protein database
+  if ($rowdata_ref->{biosequence_name} =~ /^(GB\d+)\-\w+$/){
+     $rowdata_ref->{biosequence_gene_name} = $1;
+     $rowdata_ref->{biosequence_accession} = $1;
+  }
+  if ($rowdata_ref->{biosequence_name} =~ /^gnl\|Amel\|(GB\d+)\-\w+$/ ) {
+     $rowdata_ref->{biosequence_gene_name} = $1;
+     $rowdata_ref->{biosequence_accession} = $1;
+  }
+  ### Conversion rules for Drosophila Flybase  database
+  if ($rowdata_ref->{biosequence_desc} =~ /.*gene\:(FBgn\d+)\s+.*/ ) {
+     $rowdata_ref->{biosequence_gene_name} = $1;
+     $rowdata_ref->{biosequence_accession} = $1;
+  }
 
   #### Conversion rules for the SGD yeast orf fasta
   ## >YAL003W EFB1 SGDID:S0000003, Chr I from 142176-142255,142622-143162, Verified ORF
@@ -1185,30 +1210,45 @@ sub parseBiosequenceDescriptor {
      $rowdata_ref->{dbxref_id} = '5';
   }
 
+  ### Conversion rules for WB
+  if($rowdata_ref->{biosequence_desc} =~ /(WBGene\d+)/){
+     $rowdata_ref->{biosequence_accession} = $1;
+     $rowdata_ref->{biosequence_gene_name} = $1;
+     $rowdata_ref->{dbxref_id} = '41';
+  }
+  elsif($rowdata_ref->{biosequence_desc} =~ /pep:known.*gene:(\S+)/){
+     $rowdata_ref->{biosequence_accession} = $1;
+     $rowdata_ref->{biosequence_gene_name} = $1;
+  }
 
   #### Conversion rules for the IPI database
   if ($rowdata_ref->{biosequence_name} =~ /^IPI:(IPI[\d\.]+)$/ ) {
      $rowdata_ref->{biosequence_accession} = $1;
      if ($rowdata_ref->{biosequence_name} =~ /^IPI:(IPI[\d]+)\.\d+$/ ) {
-       #$rowdata_ref->{biosequence_gene_name} = $1;
+       $rowdata_ref->{biosequence_gene_name} = $1;
      }
      $rowdata_ref->{dbxref_id} = '9';
   }
 
-
   #### Conversion rules for the new IPI database
   if ($rowdata_ref->{biosequence_name} =~ /^(IPI[\d\.]+)$/ ) {
      $rowdata_ref->{biosequence_accession} = $1;
-     #$rowdata_ref->{biosequence_gene_name} = $1;
+     $rowdata_ref->{biosequence_gene_name} = $1;
      $rowdata_ref->{dbxref_id} = '9';
   }
 
   #### Conversion rules for the new IPI database 2 (dreiss)
   if ($rowdata_ref->{biosequence_name} =~ /^IPI:(IPI[\d\.]+)\|/ ) {
      $rowdata_ref->{biosequence_accession} = $1;
-     #$rowdata_ref->{biosequence_gene_name} = $1;
+     $rowdata_ref->{biosequence_gene_name} = $1;
      $rowdata_ref->{dbxref_id} = '9';
   }
+    #### Conversion rules for the new IPI database 3
+  #if($rowdata_ref->{biosequence_desc} =~ /Gene_Symbol=(\S+)/){
+  #  $rowdata_ref->{biosequence_gene_name} = $1;
+  #  $rowdata_ref->{biosequence_accession} = $1;
+  #  $rowdata_ref->{dbxref_id} = '9';
+  #}
 
 
   #### Conversion rules for some generic GenBank IDs  
@@ -1218,7 +1258,7 @@ sub parseBiosequenceDescriptor {
      $rowdata_ref->{dbxref_id} = '7';
   }
   #### Conversion rules for some generic GenBank IDs
-  if ($rowdata_ref->{biosequence_name} =~ /gi\|(\d+)\|/ ) {
+  if ($rowdata_ref->{biosequence_name} =~ /gi\|(\d+)\|/ and $rowdata_ref->{biosequence_name} !~ /^contam/i ) {
      $rowdata_ref->{biosequence_accession} = $1;
      $rowdata_ref->{dbxref_id} = '12';
   }
@@ -1610,7 +1650,11 @@ sub parseBiosequenceDescriptor {
         $fav_codon_frequency->{$rowdata_ref->{biosequence_name}};
     }
   }
-
+  if($rowdata_ref->{biosequence_gene_name}){
+    if (length ($rowdata_ref->{biosequence_gene_name}) >255){
+      $rowdata_ref->{biosequence_gene_name} =~ s/(.{252})....*/$1.../g;
+    }
+  }
 
 #  #### If there's n_transmembrane_regions lookup information, set it
 #  if (defined($n_transmembrane_regions)) {
@@ -1859,6 +1903,149 @@ sub time_stmt {
   $log->info( join( "\t", $delta, $msg ) );
 }
 
+sub draw_plot {
+  my $self = shift;
+	my %args = @_;
+	my $SUB_NAME = "draw_plot";
+  my $plot_type = $args{plot_type} || die "[$SUB_NAME] ERROR: plot_type not passed"; 
+  my $x = $args{x} || die "[$SUB_NAME] ERROR: xdata not passed";
+	my $y = $args{y}; 
+  my $z = $args{z};
+	my $title = $args{title} || ''; 
+  my $xlabel = $args{xlabel} || ''; 
+	my $ylabel = $args{ylabel} || ''; 
+  my $histnorm = $args{histnorm} || '';
+	my $trace_names = $args{trace_names};
+  my $data_label = $args{data_label} || '';
+	my $xtitle = $args{xtitle} || '';
+  my $ytitle = $args{ytitle} || '';
+  my $hovermode = $args{hovermode} || 'closest';
+
+	my $plot = qq~
+      <script src="../../usr/javascript/heatmaply/plotly-main-2.11.1/plotly-latest.min.js"></script>
+	    <script src="../../usr/javascript/plotly/plot.js" type="text/javascript" ></script>
+		  <tr><td colspan="2"><div id="plotDiv" style="width:1000px;height:600;"></div></td></tr>
+      <script type="text/javascript">
+	~;
+  $plot .= "var layout={\n";
+	$plot .= "xaxis:{title: '$xtitle'},\n" if ($xtitle);
+	$plot .= "yaxis:{title: '$ytitle'},\n" if ($ytitle);
+  $plot .= "hovermode:'$hovermode',\n" if ($hovermode);
+	$plot .= "};\n";
+
+  if ($plot_type =~ /histogram/i){
+		 $plot .= "var x=[];\n";
+		 foreach my $data (@$x){
+			 $plot .= "x.push([$data]);\n";
+		 }
+     $plot .= "var trace_names=[];\n";
+		 if ($trace_names){
+			 foreach my $name (@$trace_names){
+         $plot .= "trace_names.push('$name');\n";
+			 }
+		 }
+		 $plot .= qq~
+				var title="$title";
+				layout.barmode = "bar";
+				layout.xaxis.ticklabeloverflow = "allow";
+				layout.xaxis.b = 100;
+				layout.xaxis.pad = 10;
+        layout.bargap = 0.2;
+				draw_histogram();
+        </script>
+		 ~;
+	}elsif($plot_type =~ /scatter/i){
+		 if (! $y){
+			  return "Error: missing y value";
+		 }
+		 $plot .= qq~
+		    var data_label = [$data_label];
+		    var x=[$x->[0]];
+				var y=[$y->[0]];
+        var title ='$title';
+				draw_scatterPlot();
+        </script>
+			~;
+	}elsif($plot_type =~ /heatmap/i){
+     if (! $x || ! $y || ! $z){
+			  return "Error: missing y or z value";
+		 }
+
+     my $x_value = $x->[0];
+     my $y_value = $y->[0];
+     my $z_value = $z->[0];
+     #https://cran.r-project.org/web/packages/heatmaply/heatmaply.pdf
+     use Statistics::R;
+     my $R = Statistics::R->new();
+     my $sys_pandoc_loc = '/regis/sbeams/bin/pandoc-3.1.12.1/bin/';
+     my $cmd = <<EOF; 
+       library("heatmaply")
+       sources <- c(Sys.setenv(HOME="/root"))  
+       sources <- c(Sys.setenv(RSTUDIO_PANDOC="$sys_pandoc_loc"))
+			 col_names <- c($y_value)
+			 row_names <- c($x_value)
+			 values <- c($z_value)
+			 data <- array(values, dim = c(length(row_names), length(col_names)))
+       data[is.na(data)] <- NA
+			 rownames(data) <- row_names
+			 colnames(data) <- col_names
+			 temp_file <- tempfile(pattern = "my_temp_file", fileext = ".html")
+			 plot <- heatmaply(data,
+                        fontsize_row = 8,
+                        fontsize_col = 8,
+                        na.value="grey50",
+                        column_text_angle = 30,
+                        file=temp_file)
+       print (temp_file)
+EOF
+
+     my $out = $R->run($cmd);
+     chomp $out;
+     if ($out =~ /(Error in hclustfun.*)/){
+        ## draw non cluster heatmap
+        $plot .=qq~<span style='color: red;'>failed to draw clustered heatmap: $1</span><BR>~;
+				$plot .= qq~
+						var data_label = [$data_label];
+						var x=[$x_value];
+						var y=[$y_value];
+            var z=[$z_value];     
+						draw_heatmap();
+						</script>
+					~;
+     }else{     
+			 $out =~ /(.tmp\/.*html)/;
+			 my $tmp_file = $1;
+			 my $out_html = `cat $tmp_file`; 
+			 $R->stop();
+			 $plot = qq~
+					<tr><td colspan='2'>
+					<script src="../../usr/javascript/heatmaply/htmlwidgets-1.6.4/htmlwidgets.js"></script>
+					<script src="../../usr/javascript/heatmaply/plotly-binding-4.10.4/plotly.js"></script>
+					<script src="../../usr/javascript/heatmaply/typedarray-0.1/typedarray.min.js"></script>
+					<link href="../../usr/javascript/heatmaply/crosstalk-1.2.1/css/crosstalk.min.css" rel="stylesheet" />
+					<script src="../../usr/javascript/heatmaply/crosstalk-1.2.1/js/crosstalk.min.js"></script>
+					<script type="text/javascript" src="../../usr/javascript/plotly/plotly-latest.min.js"></script>
+					<link href="../../usr/javascript/heatmaply/plotly-htmlwidgets-css-2.11.1/plotly-htmlwidgets.css" rel="stylesheet" />
+			 ~;
+			 my $flag = 0;
+			 foreach my $line (split("\n",$out_html)){
+					if ($line =~ /<div id="htmlwidget_container">/){
+						 $flag = 1;
+					}elsif($line =~ /<\/body/){
+						 $flag = 0;
+					}
+					if ($line =~ /htmlwidget-sizing/){
+						 next; 
+					}elsif($line =~ /html-fill-item/){
+					}
+					$plot .= "$line\n" if ($flag);
+			 }
+			 $plot .= "</td></tr>\n";
+    }
+	}
+  return $plot;
+}
+
 1;
 
 
@@ -2003,3 +2190,4 @@ Eric Deutsch <edeutsch@systemsbiology.org>
 SBEAMS::Connection
 
 =cut
+
