@@ -135,12 +135,23 @@ sub convertMods {
 	my $index = $-[0];
 	if ($sequence =~ /([A-Znc]\[.+?\])/) {
 	    my $mod = $1;
-	    my $aa = substr($mod,0,1);
+            my $square_bracket_count = $mod =~ tr/\[//;
+            my $aa = substr($mod,0,1);
 	    my $mass_diff = $supported_modifications{$mass_type}->{$mod};
 
-            #### If that didn't work, try a lookup by name
+
+            #### If that didn't work, try a lookup by name maybe with embedded brackets
             if ( ! defined($mass_diff) ) {
-              if ($sequence =~ /(\w)\[(.+?)\]/) {
+	      #print("mod=$mod, square_bracket_count=$square_bracket_count<BR>\n");
+              if ( $square_bracket_count == 2 ) {
+                if ( $sequence =~ /([A-Znc])\[(.+?\[.+?\])\]/ ) {
+                  $mod = $2;
+                  $mass_diff = getMassdiffByName(name=>$mod);
+                  #print("mod=$mod,mass_diff=$mass_diff<BR>\n");
+                } else {
+                  print("E152: Cannot parse $sequence<BR>\n");
+                }
+              } elsif ($sequence =~ /(\w)\[(.+?)\]/) {
                 $mass_diff = getMassdiffByName(name=>$2);
               }
             }
