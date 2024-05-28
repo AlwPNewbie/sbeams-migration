@@ -2550,6 +2550,10 @@ sub getCompactNativeId {
   } elsif ( $nativeId =~ /scan=(\d+)/ ) {
     $compactNativeId = "$1";
 
+  #### Unclear where this comes from. Example PXD046281:20240319_B31-5A4_Biorep2_Phospho-1_1_1_13393
+  } elsif ( $nativeId =~ /^index=(\d+)/ ) {
+    $compactNativeId = "$1";
+
   #### Not yet coded or invalid
   } else {
     print("ERROR: unrecognized nativeId '$nativeId'\n");
