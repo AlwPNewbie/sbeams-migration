@@ -528,8 +528,11 @@ sub processRequest {
 	    #### If the peptidoform has a mass mod on it, then feed it through a converter to UniMod form
 	    $convertedPeptidoformStr = $peptidoform;
 	    if ( $peptidoform =~ /[\[\{]/ ) {
-	      my $pep = Proteomics::Sequence::Peptide->new(sequenceString=>$peptidoform);
+	      #print("peptidoform=$peptidoform<BR>\n");
+              my $pep = Proteomics::Sequence::Peptide->new(sequenceString=>$peptidoform);
+	      #print("pep=%{$pep}<BR>\n");
 	      $convertedPeptidoformStr = $pep->{modifiedSequenceString};
+	      #print("convertedPeptidoformStr=$convertedPeptidoformStr<BR>\n");
 	    }
 
 	    #### Manually create the USI string and store it
