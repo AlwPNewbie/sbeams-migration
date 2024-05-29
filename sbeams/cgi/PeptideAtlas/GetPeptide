@@ -1829,7 +1829,9 @@ sub postProcessResultset {
  for (my $i=0; $i<$n_rows; $i++) {
     #### Loops through resultset and do formatting
     my $pep = $resultset_ref->{data_ref}->[$i];
-		$processed_spec{$pep->[$name_idx] . '-'. $pep->[$smpl_idx] }++;
+    my $modified_pep = $pep->[$mseq_idx];
+		$processed_spec{$pep->[$name_idx].'-'.$pep->[$smpl_idx].'-'. $modified_pep}++;
+
 		# Get mzML filename, cycle, and charge from spectrum name
 		$pep->[$name_idx] =~ /(\S+)\.(\d+?)\.(\d+?)\.(\d)/;
 		my $mzml_basename = $1;
@@ -1923,7 +1925,10 @@ sub postProcessResultset {
 		my $build_id = $query_parameters_ref->{atlas_build_id};
 		my $img = "<IMG BORDER=0 SRC='$HTML_BASE_DIR/images/spectrum.gif' TITLE='View spectrum for $pep->[$mseq_idx] (+$pep->[$chrg_idx])'>";
 		my $eval_string = $query_parameters_ref->{'ann'}? 'eval=1&' : '' ;
-		$pep->[$spec_idx] = qq~<A HREF="$CGI_BASE_DIR/PeptideAtlas/ShowObservedSpectrum?${eval_string}atlas_build_id=$build_id&spectrum_identification_id=$pep->[$spec_idx]&peptide=$pep->[$mseq_idx]&assumed_charge=$pep->[$chrg_idx]&chimera_level=$pep->[$chimera_idx]&sample_id=$pep->[$smpl_idx]&spectrum_name=$pep->[$name_idx]" TARGET=blank>$img</A>~;
+    my $modpep_query_string = $pep->[$mseq_idx];
+    $modpep_query_string =~ s/\+/%2B/g;
+ 
+		$pep->[$spec_idx] = qq~<A HREF="$CGI_BASE_DIR/PeptideAtlas/ShowObservedSpectrum?${eval_string}atlas_build_id=$build_id&spectrum_identification_id=$pep->[$spec_idx]&peptide=$modpep_query_string&assumed_charge=$pep->[$chrg_idx]&chimera_level=$pep->[$chimera_idx]&sample_id=$pep->[$smpl_idx]&spectrum_name=$pep->[$name_idx]" TARGET=blank>$img</A>~;
 		$pep->[$ann_idx] = sprintf("%0.2f", $pep->[$ann_idx]);
 		$pep->[$ann_idx] =~ s/^0// if ($pep->[$ann_idx] > 0);  #remove any zero before decimal
 		$pep->[$ann_idx] = "0" if ($pep->[$ann_idx] == 0);
@@ -2040,7 +2045,7 @@ sub postProcessResultset {
       $pep->[$ce_idx] = ( $pep->[$ce_idx] ) ? sprintf( "%0.1f", $pep->[$ce_idx] ) : $sbeams->makeInactiveText('n/a'); 
     }
 
-    if ($processed_spec{$pep->[$name_idx]. '-'. $pep->[$smpl_idx]} == 1){
+    if ($processed_spec{$pep->[$name_idx].'-'.$pep->[$smpl_idx].'-'.$modified_pep} == 1){
       push @processed_data, $resultset_ref->{data_ref}->[$i];
     }
   } # end for each pep
