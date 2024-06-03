@@ -1630,7 +1630,7 @@ sub handle_request {
     #### PTM
     #############################################################################
     my $ptm_sql = qq~
-    SELECT biosequence_name,offset,residue,nObs,one_site,two_sites,over_two_sites,
+    SELECT biosequence_name,offset,residue,flr_category,nObs,one_site,two_sites,over_two_sites,
            nP01,nP05,nP19,nP81,nP95,nP99,nP100,
            noChoice,enrichedWithMod,enrichedNonMod,nonEnriched,
            isInNextProt,isInUniprot,most_observed_ptm_peptide,ptm_type
@@ -1647,7 +1647,7 @@ sub handle_request {
       my %data = ();
       my %ptm_obs = ();
       my $ptm_type = '';
-      my @columns = ('Protein', 'Offset', 'Residue','nObs', 'One_mod', 'Two_mods', 'Over_two_mods',
+      my @columns = ('Protein', 'Offset', 'Residue', 'FLR Category', 'nObs', 'One_mod', 'Two_mods', 'Over_two_mods',
 		     'nP0-.01', 'nP.01-.05', 'nP.05-.20', 'nP.20-.80', 'nP.80-.95', 'nP.95-.99', 'nP.99-1',
          'no-choice','enriched-with-mod','enriched-but-non-mod','non-enriched',
          'InNextProt','InUniprot','peptide');
@@ -1655,7 +1655,7 @@ sub handle_request {
 				my @vals = @$row;
 				$vals[1] = $vals[1] -1;
         $ptm_type = pop @vals; 
-        $ptm_obs{$ptm_type} = 1 if ($vals[3] > 0);
+        $ptm_obs{$ptm_type} = 1 if ($vals[4] > 0);
         push  @{$data{$ptm_type}{$vals[0]}{$vals[1]}},[@vals[2..$#vals]];
       }
 		  my $ptm_summary_chart = $sbeamsMOD->displayProt_PTM_plotly(data=> \%data,

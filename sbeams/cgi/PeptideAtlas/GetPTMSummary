@@ -201,6 +201,7 @@ sub handle_request {
   unless ($n_params_found) {
     $parameters{input_form_format} = "minimum_detail";
     $parameters{presence_level_constraint} = "1";
+    $parameters{display_options} = 'proteinResidueView'; 
   }
 
 	#### Display the user-interaction input form
@@ -423,8 +424,9 @@ sub handle_request {
   if ( $parameters{display_options} =~ /proteinResidueView/ ) {
      @column_array = (
         @column_array,
-				["residue","PTM.residue","residue"],
 				["offset","PTM.offset","offset"],
+				["residue","PTM.residue","residue"],
+        ["flr_category", "PTM.flr_category","FLR Category"],
         ["ptm_type","PTM.ptm_type","PTM Type"],
 				["nObs","PTM.nObs","nObs"],
 				["one_site","PTM.one_site","One_mod"],
@@ -698,13 +700,9 @@ sub postProcessResultset {
 	my @data=();
 
   if ($parameters{display_options} =~ /proteinResidueView/){ 
+     my $val1= $cols->{nObs};
+     my $val2 = $cols->{enrichedWithMod};
      for (my $i=0; $i<$n_rows; $i++) {
-        my $val1= 5;
-        my $val2 = 22;
-        if ($show_redundant_prot eq 'on'){
-           $val1 = 7;
-           $val2 = 24;
-        }
         for my $j ($val1..$val2){
           next if($j >= $val1+12 && $j <= $val1+14);
           if ($resultset_ref->{data_ref}->[$i]->[$j] == 0){

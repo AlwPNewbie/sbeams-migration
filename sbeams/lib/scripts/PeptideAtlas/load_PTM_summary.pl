@@ -39,13 +39,15 @@ Options:
   --purge
   --atlas_build_id            required
   --infile                    required 
+  --outfile                    output file name 
  e.g.:  ./$PROG_NAME --atlas_build_id 347 --load --infile protein_PTM_summary.txt  
         ./$PROG_NAME --atlas_build_id 437 --infile protein_PTM_summary.txt --update
+        ./$PROG_NAME --atlas_build_id 437 --infile protein_PTM_summary.txt --outfile ptm_summary.txt
 EOU
 
 #### Process options
 unless (GetOptions(\%OPTIONS,"verbose:s","quiet","debug:s","testonly",
-        "update","atlas_build_id:i", "load", "purge", "infile|i:s"
+        "update","atlas_build_id:i", "load", "purge", "infile|i:s", "outfile|o:s"
     )) {
 
     die "\n$USAGE";
@@ -61,6 +63,7 @@ my $LOAD = $OPTIONS{"load"} || 0;
 my $PURGE = $OPTIONS{"purge"} || 0;
 my $UPDATE = $OPTIONS{"update"} || 0;
 my $file = $OPTIONS{"infile"} || die $USAGE;
+my $outfile = $OPTIONS{"outfile"} || '';
 my $atlas_build_id = $OPTIONS{"atlas_build_id"} || die $USAGE;
 
 $sbeams->update_PA_table_variables ($atlas_build_id);
@@ -75,16 +78,17 @@ exit;
 ################################################################################
 
 sub main {
-  
+ 
   if ($LOAD || $PURGE){
      purge_table (atlas_build_id => $atlas_build_id);
   }
   my %biosequence_ids = ();
 
-  if ($LOAD || $UPDATE){
+  if ($LOAD || $UPDATE || $outfile){
      get_biosequence_ids (atlas_build_id => $atlas_build_id,
                           biosequence_ids => \%biosequence_ids);
      load_table ( file => $file,
+                  outfile => $outfile,
                   atlas_build_id => $atlas_build_id,
                   biosequence_ids => \%biosequence_ids,
                   update => $UPDATE);
@@ -94,10 +98,28 @@ sub main {
 sub purge_table {
   my %args  = @_;
   my $atlas_build_id = $args{atlas_build_id};
-  my $sql = "DELETE FROM $TBAT_PTM_SUMMARY WHERE ATLAS_BUILD_ID = $atlas_build_id"; 
-  print "$sql\n";
+  #my $sql = "DELETE FROM $TBAT_PTM_SUMMARY WHERE ATLAS_BUILD_ID = $atlas_build_id"; 
+  #print "$sql\n";
+  #$sbeams->do( $sql);
+   my $sql = qq~
+    DECLARE \@count int
+    SET \@count = 100000
+    WHILE \@count > 0
+    BEGIN
+    DELETE
+    FROM $TBAT_PTM_SUMMARY
+    WHERE  ID in (
+      SELECT TOP (\@count) ID
+      from $TBAT_PTM_SUMMARY
+      WHERE atlas_build_id = $atlas_build_id
+    )
+    SET \@count=\@\@ROWCOUNT;
+    END
+   ~;
 
-  $sbeams->do( $sql);
+   print "Purging BIOSEQUENCE_ID_ATLAS_BUILD_SEARCH_BATCH table ...\n";
+   $sbeams->executeSQL($sql);
+
 } 
 sub get_biosequence_ids{
   my %args  = @_;
@@ -117,38 +139,57 @@ sub load_table{
   my $atlas_build_id = $args{atlas_build_id} || die "need atlas_build_id\n";
   my $biosequence_ids = $args{biosequence_ids} || die "need biosequence_ids\n"; 
   my $update = $args{update};
-  my $file = $args{file} || die "need file\n";;
+  my $file = $args{file} || die "need file\n";
+  my $outfile = $args{outfile} || '';
+
+  #purge_table($atlas_build_id);
+
   open (IN,"<$file") or die "cannot open $file\n";
   my $line = <IN>;
-  my $counter=0;
-  my $sql  = qq~
-		SELECT biosequence_id, offset, ID 
-		FROM $TBAT_PTM_SUMMARY 
-		WHERE ATLAS_BUILD_ID = $atlas_build_id
-	~;
-	my @rows = $sbeams->selectSeveralColumns($sql);
+  my $counter = 1;
   my %results =();
-  foreach my $row (@rows){
-    my ($bid,$offset,$id) = @$row;
-    $results{$bid}{$offset} = $id;
-  }   
-
+  if (! $outfile){
+		my $sql  = qq~
+			SELECT biosequence_id, offset, ID 
+			FROM $TBAT_PTM_SUMMARY 
+			WHERE ATLAS_BUILD_ID = $atlas_build_id
+		~;
+		my @rows = $sbeams->selectSeveralColumns($sql);
+		foreach my $row (@rows){
+			my ($bid,$offset,$id) = @$row;
+			$results{$bid}{$offset} = $id;
+		}
+  }else{ 
+    open (OUT, ">$outfile") or die "cannot open $outfile\n";
+  } 
   while ($line = <IN>){
     chomp $line;
     my @cols = split("\t", $line, -1);
     my $protein = $cols[0];
     my $biosequence_id;
     my $str = join (",", @cols[2..$#cols]); 
-    next if ($str !~ /[1-9]/);
+    #next if ($str !~ /[1-9]/);
     if (defined $biosequence_ids->{$protein}){
       $biosequence_id = $biosequence_ids->{$protein};
     }else{
       print "WARNING: cannot find biosequence id for $protein\n";
       next;
     }
+    
     if ($cols[3] > 0 && ! $cols[20]){
       die "$protein $cols[1] peptide empty\n";
-    }    
+    }
+   # if (@cols == 21){
+   #  $cols[21] = 'STY:79.9663';
+   # }
+    if ($outfile){
+      print OUT "$counter\t$atlas_build_id\t$biosequence_id\t$cols[1]\t$cols[3]\t$cols[4]\t$cols[5]\t". 
+                 join("\t", @cols[7..13])."\t$cols[18]\t$cols[19]\t$cols[2]\t$cols[6]\t$cols[20]\t".
+                 "$cols[14]\t$cols[16]\t$cols[17]\t$cols[15]\t$cols[21]$cols[22]\n";
+      $counter++;
+      print "$counter..." if ($counter %1000 == 0);
+      next;
+    }
     my %rowdata = (
         atlas_build_id => $atlas_build_id,
 				biosequence_id => $biosequence_id,
@@ -173,6 +214,7 @@ sub load_table{
 				isInNeXtProt => $cols[19],
         most_observed_ptm_peptide => $cols[20],
         ptm_type => $cols[21],
+        category => $cols[22]
     );
     my $offset = $cols[1];
     my $success;
@@ -212,4 +254,5 @@ sub load_table{
    $counter++;
    print "$counter..." if ($counter %1000 ==0);
   }
+  close OUT;
 }

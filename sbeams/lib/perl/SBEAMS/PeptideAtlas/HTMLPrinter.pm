@@ -3110,7 +3110,7 @@ sub displayProt_PTM_plotly{
           $flag = 1 if($row->[0] !~ /[nc]/);
 					$dataTable .= "['$row->[0]'";
 					#foreach my $c (qw (nP<.01 nP<.05 nP<.20 nP.2-.8 nP>.80 nP>.95 nP>.99 no-choice)){
-          foreach my $i (5..12){
+          foreach my $i (6..13){
 						$dataTable .=",$row->[$i]";
 						if ($row->[$i] > $maxnobs){
 							$maxnobs =$row->[$i];

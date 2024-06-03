@@ -37,8 +37,9 @@ Options:
   --build_path       build path for all data
   --list             experiment list for enrichment datasets
   --ptm_type         STY:79.9663/K:42.0106  
+  --respect          summary for ptm id from respect search
   --fasta                
-
+  --flr_cat
  e.g.:  $PROG_NAME \\
      --ptm_build_path DATA_FILES/ \\
      --fasta DATA_FILES/Arabidopsis.fasta \\
@@ -50,7 +51,7 @@ EOU
 
 #### Process options
 unless (GetOptions(\%OPTIONS,"ptm_build_path|p:s",
-  "fasta|f:s", "list|l:s","build_path|b:s","ptm_type:s")) {
+  "fasta|f:s", "list|l:s","build_path|b:s","ptm_type:s","respect", "flr_cat:s")) {
   print "$USAGE";
   exit;
 }
@@ -61,6 +62,10 @@ my $fastafile = $OPTIONS{fasta} || die $USAGE;
 my $enriched_list = $OPTIONS{"list"} || die $USAGE;
 my $all_buildpath = $OPTIONS{build_path} || die $USAGE;
 my $ptm_type = $OPTIONS{ptm_type} || die $USAGE;
+my $respect_summary = $OPTIONS{respect} || 0;
+my $flr_category_file = $OPTIONS{flr_cat} || '';
+
+
 $ptm_type =~ /^(.*):(.*)$/;
 my $ptm_residue = $1; 
 my $ptm_name = $2;
@@ -179,9 +184,16 @@ sub main {
 		my $pep = $tmp[3];
     my $ptm_sequence = $tmp[19];
     my $modified_sequence = $tmp[5];
+    my $respect_level = $tmp[18] || 1;
     my $mod_type='';
     
     next if ($ptm_sequence !~ /\[$ptm_type\]/);
+    if ($respect_summary){
+      next if ($respect_level == 1);
+    }else{
+      next if ($respect_level > 1 );
+    }
+
     ## skip: mod seq [TMT6plex]-PK[TMT6plex]GPSGSPWYGSDR, ptm sequence [nK:Acetyl]n(0.992)PK(0.008)GPSGSPWYGSDR
     $ptm_type =~ /^(.*):(.*)$/;
     $mod_type = $2;
@@ -353,7 +365,6 @@ sub main {
   print "\n";
 
 
-
 	open(FA, "$fastafile") || die "Couldn't open file $fastafile\n";
 	my $fasta = new FAlite(\*FA);
 	my %sequence;
@@ -366,13 +377,22 @@ sub main {
 		$acc =~ s/^>//g;
 		$sequence{$acc} = $seq; 
 	}
+  my %flr_category = ();
+  if ($flr_category_file){
+	  read_flr_category (file =>$flr_category_file,
+                       flr_category_ref => \%flr_category);
+  }
 
-
-
-  open (OUT, ">$ptm_buildpath/protein_PTM_summary_$ptm_type.txt");
+  if ($respect_summary){
+    open (OUT, ">$ptm_buildpath/protein_PTM_summary_$ptm_type"."_respect.txt");
+  }else{
+    open (OUT, ">$ptm_buildpath/protein_PTM_summary_$ptm_type.txt");
+  }
   print OUT "protein\toffset\tresidue\tnObs\t1mod\t2mods\t3+mods\t";
   print OUT  join("\t", @prob_categories) ;
-  print OUT "\tisInUniProt\tisInNeXtProt\tmost_observed_peptide\tptm_type\n";
+  print OUT "\tisInUniProt\tisInNeXtProt\tmost_observed_peptide\tptm_type\tcategory\n";
+
+
 
   foreach my $prot (keys %protInfo){
     if (not defined $sequence{$prot}){
@@ -410,7 +430,24 @@ sub main {
 					}else{
 						print OUT "no\t";
 					}
-					print OUT "$protInfo{$prot}{$pos}{$res}{representive_peptide}{pep}\t$ptm_type\n";
+          if ($respect_summary){
+            print OUT "$protInfo{$prot}{$pos}{$res}{representive_peptide}{pep}\t$ptm_type"."_respect\t";
+          }else{
+					  print OUT "$protInfo{$prot}{$pos}{$res}{representive_peptide}{pep}\t$ptm_type\t";
+          }
+
+					if (%flr_category){
+						if (defined $flr_category{$prot}{$pos}){
+							 if ($flr_category{$prot}{$pos}{residue} ne $res){
+                  print "ERROR: pos=$pos residue in $flr_category_file is $flr_category{$prot}{$pos}{residue} != $res\n";
+                  print OUT "\n";
+               }else{
+                  print OUT "$flr_category{$prot}{$pos}{category}\n";
+               }
+						}else{
+                print OUT "\n";
+            }
+          }
 				}
       }else{
          print OUT "$prot\t$pos\t$aa\t";
@@ -427,7 +464,11 @@ sub main {
          }else{
             print OUT "no\t";
          }
-         print OUT "\t$ptm_type\n"; 
+         if ($respect_summary){
+           print OUT "\t$ptm_type"."_respect\t\n";
+         }else{
+           print OUT "\t$ptm_type\t\n"; 
+         }
       }
       $pos++;
     }
@@ -437,6 +478,23 @@ sub main {
   close OUT;
 
 }
+
+###############################################################################
+#read_flr_category
+###############################################################################
+sub read_flr_category {
+  my %args = @_;
+  my $flr_category_ref = $args{flr_category_ref};
+  my $file = $args{file};
+
+ open (INFILE,"<$file" ) or die "Unable open $file\n";
+  while (my $line = <INFILE>){
+    my ($prot,$pos,$res,$cat,$str) = split(",", $line);
+    $flr_category_ref->{$prot}{$pos}{residue} = $res;
+    $flr_category_ref->{$prot}{$pos}{category} = $cat;
+  }
+}
+
 ###############################################################################
 # readIdentFile
 ###############################################################################
@@ -464,7 +522,14 @@ sub readIdentFile {
     my $id =  $columns[0];
     my $peptideSequence = $columns[3];
     my $modifiedSequence = $columns[5];
-      
+    my $respect_level = $columns[18] || 1;
+
+    if ($respect_summary){
+      next if ($respect_level == 1);
+    }else{
+      next if ($respect_level > 1 );
+    }
+ 
     ## need to consider mod mass. do it later 
     if($peptideSequence !~ /[$ptm_residue]/){
        if ($ptm_residue !~ /[nc]/){
