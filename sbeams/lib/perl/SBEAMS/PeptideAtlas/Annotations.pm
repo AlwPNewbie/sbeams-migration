@@ -523,7 +523,7 @@ sub get_column_defs {
 			'enriched-with-mod' => 'Number of PSMs covering this site with phospho modification on this site, and originating from a phospho-enriched sample',
 			'iRT' => 'iRT normalized peptide retention time as per <A HREF=http://tinyurl.com/iRTrefs> Escher et al. 2012 </A> ',
 			'nObs' => 'Total observed PTM spectra for the site.',
-      'FLR Category' => 'Gold, Silver, and Bronze. Gold represents sites seen in n data set with <1% FLR, Silver represents sites seen in m data sets with <1% FLR, <br>and Bronze represents any other sites passing <5% FLR. The values for n and m can be set empirically in a PTM "build" based on the number of <br>data sets and the counts of decoys following the aggregation of multiple data sets, <br>and application of possible values of n and m. <a ref="https://pubs.acs.org/doi/10.1021/acs.jproteome.4c00187">Kerry et al.(2024)</a>',
+      'FLR Category' => '<font color="red">PTMeXchange</font> Gold, Silver, and Bronze. Gold represents sites seen in n data set with <1% FLR, Silver represents sites seen in m data sets with <1% FLR, <br>and Bronze represents any other sites passing <5% FLR. The values for n and m can be set empirically in a PTM "build" based on the number of <br>data sets and the counts of decoys following the aggregation of multiple data sets, <br>and application of possible values of n and m. <a href="https://www.proteomexchange.org/ptmexchange/index.html">PTMeXchange</a>',
 			'nP0-.01' => 'Number of observed PSM with PTMProphet probability < 0.01',
 			'nP.01-.05' => 'Number of observed PSM with PTMProphet probability >= 0.01 and < 0.05',
 			'nP.05-.20' => 'Number of observed PSM with PTMProphet probability >= 0.05 and < 0.2',
