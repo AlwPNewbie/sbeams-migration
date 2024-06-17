@@ -2855,6 +2855,7 @@ sub displayResultSet {
     my $query_parameters_ref = $args{'query_parameters_ref'};
     my $cytoscape = $args{'cytoscape'} || undef;
 		my $tab_label = $args{'tab_label'} || 'Resultset';
+    my $table_id = $args{'table_id'} || 'TBL';
 
     # Improved formatting capacity, DSC 2005-08-09
     my $no_escape = $args{no_escape} || 0;
@@ -2867,6 +2868,8 @@ sub displayResultSet {
       $resort_url="$base_url${separator}apply_action=VIEWRESULTSET&".
           "rs_set_name=$rs_params_ref->{set_name}";
     }
+
+
 
 
     #### Set the display window of rows
@@ -3329,10 +3332,10 @@ sub displayResultSet {
 
         ShowHTMLTable{
           titles=>$column_titles_ref,
-	  types=>$types_ref,
-	  widths=>\@precisions,
+					types=>$types_ref,
+					widths=>\@precisions,
       	  row_sub=>\&returnNextRow,
-          table_attrs=>"$table_width $table_class BORDER=0 CELLPADDING=2 CELLSPACING=2",
+          table_attrs=>"ID=\"$table_id\" $table_width $table_class BORDER=0 CELLPADDING=2 CELLSPACING=2",
           title_formats=>['SPAN CLASS=dataheader'],
           url_keys=>$url_cols_ref,
           hidden_cols=>$hidden_cols_ref,
@@ -3529,7 +3532,7 @@ sub displayResultSetControls {
 
     my %rs_params = %{$rs_params_ref};
     my %parameters = %{$query_parameters_ref};
-
+    my $table_id = $args{'table_id'} || 'TBL';
 
     #### Start form
     my $BR = "\n";
@@ -3542,19 +3545,26 @@ sub displayResultSetControls {
     #### Display the row statistics and warn the user
     #### if they're not seeing all the data
     my $start_row = $rs_params{page_size} * $rs_params{page_number} + 1;
-    my $nrows; 
-    if($args{search_page}){
-       $nrows = $args{row_count};
-       my $page_end = $nrows;
-       $page_end = $rs_params{page_size} * ($rs_params{page_number} +1) if($nrows > $rs_params{page_size});
-       $page_end = $nrows if($page_end > $nrows);
-       print "Displayed rows $start_row - $page_end of ".
-      "$nrows\n\n";
+    my $nrows;
+    if (not defined $args{hide_row_count}){
+       $args{hide_row_count} = 0;
+    } 
+    if (! $args{hide_row_count} ){
+			if($args{search_page}){
+				 $nrows = $args{row_count};
+				 my $page_end = $nrows;
+				 $page_end = $rs_params{page_size} * ($rs_params{page_number} +1) if($nrows > $rs_params{page_size});
+				 $page_end = $nrows if($page_end > $nrows);
+				 print "Displayed rows $start_row - $page_end of ".
+				"$nrows\n\n";
+			}else{
+				$nrows = scalar(@{$resultset_ref->{data_ref}});
+				 print "Displayed rows $start_row - $resultset_ref->{row_pointer} of ".
+				"$nrows\n\n";
+			}
     }else{
-      $nrows = scalar(@{$resultset_ref->{data_ref}});
-       print "Displayed rows $start_row - $resultset_ref->{row_pointer} of ".
-      "$nrows\n\n";
-
+       $nrows = scalar(@{$resultset_ref->{data_ref}});
+       print "\n\n$nrows rows\n\n";
     }
 
     my $row_limit = $parameters{row_limit} || 1000000;
@@ -3601,10 +3611,21 @@ sub displayResultSetControls {
 
     print qq~
       <script type="text/javascript" src="$CGI_BASE_DIR/../usr/javascript/lorikeet/js/jquery.min.js"></script>
+    ~;
+    if (! $args{hide_row_count} ){
+      print qq~
       <script type="text/javascript" src="$CGI_BASE_DIR/../usr/javascript/simplePagination/jquery.simplePagination.js"></script>
       <link rel="stylesheet" type="text/css" href="$CGI_BASE_DIR/../usr/javascript/simplePagination/simplePagination.css" />
+      ~;
+    }else{
+      print qq~
+        <script type="text/javascript" src="$CGI_BASE_DIR/../usr/javascript/simplePagination/jquery.simplePagination_norefresh.js"></script>
+        <link rel="stylesheet" type="text/css" href="$CGI_BASE_DIR/../usr/javascript/simplePagination/simplePagination.css" />
+      ~; 
+    }
+    print qq~
       <br>
-      <div class="compact-theme simple-pagination" id="compact-pagination">
+      <div class="compact-theme simple-pagination" id="compact-pagination_$table_id">
       </div>
       <INPUT TYPE="hidden" NAME="rs_set_name" VALUE="$rs_params{set_name}">
       Page Size:
@@ -3618,12 +3639,12 @@ sub displayResultSetControls {
   			\$(function() {
            var itemsOnPage = \$("[name='rs_page_size']").val();
            var rs_page_number = \$("[name='rs_page_number']").val();
-			  	 \$('#compact-pagination').pagination({
+			  	 \$('#compact-pagination_$table_id').pagination({
 							items: $nrows,
 							itemsOnPage: itemsOnPage,
 							cssStyle: 'light-theme',
               rs_page_number: rs_page_number,
-              table_name: '$table_name',
+              table_id: '$table_id',
 							rs_set_name: "$rs_params{set_name}",
 					});
 			  });
@@ -3752,20 +3773,23 @@ sub displayResultSetControls {
     my $reexec_key = $self->setShortURL( $reexec_url );
     my $recall_key = $self->setShortURL( $recall_url );
 
+    if (! $args{hide_row_count} ){
 
-    print qq~
-      <BR>
-      <NOBR>URL to
-      <A HREF=\"$recall_url\"> recall this result set</A>: ${url_base}/shortURL?key=$recall_key
-      </NOBR>
+			print qq~
+				<BR>
+				<NOBR>URL to
+				<A HREF=\"$recall_url\"> recall this result set</A>: ${url_base}/shortURL?key=$recall_key
+				</NOBR>
+      ~;
+    }
 
-      <BR>
-      <NOBR>URL to
-      <A HREF=\"$reexec_url\"> re-execute this query</A>: ${url_base}/shortURL?key=$reexec_key
-      </NOBR>
-      <BR>
-    ~;
-
+		print qq~
+			<BR>
+			<NOBR>URL to
+			<A HREF=\"$reexec_url\"> re-execute this query</A>: ${url_base}/shortURL?key=$reexec_key
+			</NOBR>
+			<BR>
+		~;
     $self->displayTimingInfo();
 
     #### Finish the form
@@ -4487,6 +4511,7 @@ sub writeResultSet {
     my $query_name = $args{'query_name'} || '';
     my $column_titles_ref = $args{'column_titles_ref'};
     my $colnameidx_ref = $args{'colnameidx_ref'};
+    my $url_cols_ref = $args{'url_cols_ref'} || {}; 
 
     if ( $resultset_ref->{from_cache} ) {
       $log->info( "Skipping write, rs $resultset_ref->{cache_descriptor} already in cache" );
@@ -4545,7 +4570,9 @@ sub writeResultSet {
       $temp_hash_ref->{'__colnameidx'} = $colnameidx_ref;
     }
 
-
+    if ($url_cols_ref){
+       $temp_hash_ref->{url_cols_ref} = $url_cols_ref;
+    }
     #### Write out the query parameters
     my $outfile = "$RESULTSET_DIR/${resultset_file}.params";
 

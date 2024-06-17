@@ -652,7 +652,12 @@ Counts only primary reference proteome entries, so final tally may be smaller th
 			'SIn_percentile' => 'percentile rank of SIn score. 100 is the highest and 1 is the lowest ranking',
 			'dNSAF' => 'StPeter normalized spectral abundance factor value. Degenerate peptides were used.',
 			'NSAF' => 'StPeter normalized spectral abundance factor value. Degenerate peptides were not used.',
-
+ 
+      ##CompareExperiments
+      'fc' => 'fold change',
+      'tval' => 'The t-value for a Student\'s t-test',
+      'pval' => 'the two-tail p-value',
+      'qval' => 'adjusted p-value, Benjamini-Hochberg (BH) method',
   );
 
   if ( $args{labels} ) {

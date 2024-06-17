@@ -1,0 +1,1245 @@
+#!/usr/local/bin/perl
+
+###############################################################################
+# Set up all needed modules and objects
+###############################################################################
+use strict;
+use Getopt::Long;
+use FindBin;
+use Data::Dumper;
+use JSON;
+
+use lib "$FindBin::Bin/../../lib/perl";
+use vars qw ($sbeams $sbeamsMOD $q $current_contact_id $current_username
+             $accessible_project_ids 
+             $PROG_NAME $USAGE %OPTIONS $QUIET $VERBOSE $DEBUG $DATABASE
+             $TABLE_NAME $CATEGORY $DB_TABLE_NAME
+             @MENU_OPTIONS);
+
+use SBEAMS::Connection qw($q $log);
+use SBEAMS::Connection::Settings;
+use SBEAMS::Connection::Tables;
+use SBEAMS::Connection::TabMenu;
+
+use SBEAMS::PeptideAtlas;
+use SBEAMS::PeptideAtlas::Settings;
+use SBEAMS::PeptideAtlas::Tables;
+use SBEAMS::PeptideAtlas::Statistics;
+
+$sbeams = new SBEAMS::Connection;
+$sbeamsMOD = new SBEAMS::PeptideAtlas;
+$sbeamsMOD->setSBEAMS($sbeams);
+$sbeams->setSBEAMS_SUBDIR($SBEAMS_SUBDIR);
+my $STATISTICS = new SBEAMS::PeptideAtlas::Statistics; 
+
+###############################################################################
+# Set program name and usage banner for command line use
+###############################################################################
+$PROG_NAME = $FindBin::Script;
+$USAGE = <<EOU;
+Usage: $PROG_NAME [OPTIONS] key=value key=value ...
+Options:
+  --verbose n         Set verbosity level.  default is 0
+  --quiet             Set flag to print nothing at all except errors
+  --debug n           Set debug flag
+
+ e.g.:  $PROG_NAME [OPTIONS] [keyword=value],...
+
+EOU
+
+#### Process options
+unless (GetOptions(\%OPTIONS,"verbose:s","quiet","debug:s")) {
+  print "$USAGE";
+  exit;
+}
+
+$VERBOSE = $OPTIONS{"verbose"} || 0;
+$QUIET = $OPTIONS{"quiet"} || 0;
+$DEBUG = $OPTIONS{"debug"} || 0;
+if ($DEBUG) {
+  print "Options settings:\n";
+  print "  VERBOSE = $VERBOSE\n";
+  print "  QUIET = $QUIET\n";
+  print "  DEBUG = $DEBUG\n";
+}
+
+
+###############################################################################
+# Set Global Variables and execute main()
+###############################################################################
+main();
+exit(0);
+
+
+###############################################################################
+# Main Program:
+#
+# Call $sbeams->Authenticate() and exit if it fails or continue if it works.
+###############################################################################
+sub main {
+
+  #### Do the SBEAMS authentication and exit if a username is not returned
+  exit unless ($current_username = $sbeams->Authenticate(
+    #permitted_work_groups_ref=>['PeptideAtlas_user','PeptideAtlas_admin'],
+    # connect_read_only=>1,
+    allow_anonymous_access=>1,
+  ));
+
+
+  #### Read in the default input parameters
+  my %parameters;
+
+  $parameters{uploaded_file_not_saved} = 1;
+
+  my $n_params_found = $sbeams->parse_input_parameters(
+    q=>$q,parameters_ref=>\%parameters);
+     #$sbeams->printDebuggingInfo($q);
+
+  #### Process generic "state" parameters before we start
+  $sbeams->processStandardParameters(parameters_ref=>\%parameters);
+
+  #### Decide what action to take based on information so far
+  if ($parameters{action} eq "???") {
+
+    # Some action
+
+  } else {
+
+    my $project_id = $sbeamsMOD->getProjectID(
+        atlas_build_id => $parameters{atlas_build_id}
+        );
+
+    $sbeamsMOD->display_page_header(
+      project_id => $project_id,
+      use_tabbed_panes=> '1',
+    );
+
+    handle_request(ref_parameters=>\%parameters);
+
+    $sbeamsMOD->display_page_footer(
+      use_tabbed_panes=> '1',
+    );
+
+  }
+} # end main
+
+
+###############################################################################
+# Handle Request
+###############################################################################
+sub handle_request {
+  my %args = @_;
+
+  #### Process the arguments list
+  my $ref_parameters = $args{'ref_parameters'}
+
+    || die "ref_parameters not passed";
+  my %parameters = %{$ref_parameters};
+
+  #### Declare some variables
+  my $file_name;
+
+  #### Get the HTML to display the tabs
+  my $tabMenu = $sbeamsMOD->getTabMenu(
+    parameters_ref => \%parameters,
+    program_name => $PROG_NAME,
+  );
+  if ( $sbeams->output_mode() eq 'html' ) {
+    print $tabMenu->asHTML();
+    print "<script>document.title = 'PeptideAtlas: Protein Quantification';</script>";
+  }
+
+  #### Get the current atlas_build_id based on parameters or session
+  my $atlas_build_id = $sbeamsMOD->getCurrentAtlasBuildID(
+    parameters_ref => \%parameters,
+  );
+  if (defined($atlas_build_id) && $atlas_build_id < 0) {
+    return;
+  }
+  $parameters{atlas_build_id} = $atlas_build_id;
+
+  #### Define some generic variables
+  my ($i,$element,$key,$value,$line,$result,$sql);
+
+  #### Define some variables for a query and resultset
+  my %resultset = ();
+  my %resultset_exp=();
+  my %resultset_postprocessed =();
+  my $resultset_ref = \%resultset;
+	my $resultset_exp_ref = \%resultset_exp;
+  my $resultset_postprocessed_ref = \%resultset_postprocessed;
+
+  my (%url_cols,%hidden_cols,%max_widths,$show_sql,$biosequence_name_constraint);
+
+  #### Read in the standard form values
+  my $apply_action  = $parameters{'action'} || $parameters{'apply_action'};
+
+  # for some reason, this returns nothing.
+  # Used to return GetProteins instead of GetProteins_beta
+
+  #### Set some specific settings for this program
+  my $CATEGORY="Protein Quantification";
+  my $TABLE_NAME="AT_CompareExperiments"; 
+  my $base_url = "$CGI_BASE_DIR/$SBEAMS_SUBDIR/$PROG_NAME";
+
+  #### Get the columns and input types for this table/query
+  my @columns = $sbeamsMOD->returnTableInfo($TABLE_NAME,"ordered_columns");
+  my %input_types = $sbeamsMOD->returnTableInfo($TABLE_NAME,"input_types");
+
+  #### Read the input parameters for each column
+  my $n_params_found = $sbeams->parse_input_parameters(
+    q=>$q,parameters_ref=>\%parameters,
+    columns_ref=>\@columns,
+    input_types_ref=>\%input_types);
+   #$sbeams->printDebuggingInfo($q);
+
+  #### If the apply action was to recall a previous resultset, do it
+  my %rs_params = $sbeams->parseResultSetParams(q=>$q);
+
+  if ($apply_action =~ /VIEWRESULTSET|VIEWPLOT/ ) {
+
+    $sbeams->readResultSet(
+        resultset_file=>$rs_params{set_name},
+        resultset_ref=>$resultset_ref,
+        query_parameters_ref=>\%parameters
+    );
+    $n_params_found = 99;
+  }
+
+  #### Set some reasonable defaults if no parameters supplied
+  unless ($n_params_found) {
+    $parameters{input_form_format} = "minimum_detail";
+    $parameters{missing_value_imputation_contraint} = 1;
+    $parameters{filter_missing_value_contraint} = 1;
+    $parameters{normalization_method_contraint} =1;
+  }
+	#### Display the user-interaction input form
+	$sbeams->display_input_form(
+		TABLE_NAME=>$TABLE_NAME,
+		CATEGORY=>$CATEGORY,
+		apply_action=>$apply_action,
+		PROGRAM_FILE_NAME=>$PROG_NAME,
+		parameters_ref=>\%parameters,
+		input_types_ref=>\%input_types,
+		mask_user_context=> '1',
+		use_tabbed_panes=> '1',
+	);
+  #### Display the form action buttons
+  $sbeams->display_form_buttons( TABLE_NAME=>$TABLE_NAME,
+                                 use_tabbed_panes => 1,
+                               );
+
+                     
+  if ($sbeams->output_mode() eq 'html') {
+
+		print qq~
+			 <script>
+				// Get references to dropdown and text box
+				const multipleSelect = document.getElementsByName('sample_id_constraint');
+				textbox = document.getElementsByName('selected_experiment_constraint');
+				textbox = textbox[0];
+
+				// Add event listener to multiple selection box to detect changes
+				multipleSelect[0].addEventListener('change', function() {
+					// Get the selected options
+
+					const selectedOptions = Array.from(multipleSelect[0].selectedOptions);
+					// Map the values of the selected options
+
+					const selectedValues = selectedOptions.map(option => option.textContent);
+					textboxValues = selectedValues.join('\\n');
+					if (textbox.value != '' ){
+						 textboxValues = textboxValues + '\\n' + textbox.value
+					}
+					textboxValues = textboxValues.split('\\n');
+
+					const uniqueTextboxValues = new Set([...textboxValues]);
+					textbox.value = Array.from(uniqueTextboxValues).sort().join('\\n')
+
+				});
+			 </script>
+		~;
+  } 
+
+
+
+  #### Finish the upper part of the page and go begin the full-width
+  #### data portion of the page
+  $sbeams->display_page_footer( close_tables=>'NO',
+                                use_tabbed_panes => 1,
+                                separator_bar=>'NO',
+                                display_footer=>'NO');
+
+
+  #########################################################################
+  #### Process all the constraints
+
+  #### If no atlas_build_id was selected, stop here
+  unless ($parameters{atlas_build_id}) {
+    $sbeams->reportException(
+      state => 'ERROR',
+      type => 'INSUFFICIENT CONSTRAINTS',
+      message => 'You must select at least one Atlas Build',
+    );
+    return;
+  }
+
+  if($parameters{selected_experiment_constraint}){
+    my @sample_tags = ();
+    foreach my $tag (split(" ", $parameters{selected_experiment_constraint})){
+       $tag =~ s/.*\|//;
+       push @sample_tags, $tag;
+    }
+    if (scalar @sample_tags > 2){   
+			$sbeams->reportException(
+				state => 'ERROR',
+				type => 'Too mang experiments',
+				message => 'Please select two to compare',
+			);
+			return;
+    }
+    $parameters{selected_experiment_constraint} = join(";", @sample_tags);
+  }
+
+
+  #### Build ATLAS_BUILD constraint
+
+	#### Build BIOSEQUENCE_NAME constraints
+	my $biosequence_name_clauses = $sbeams->parseConstraint2SQL(
+		constraint_column=>"BS.biosequence_name",
+		constraint_type=>"plain_text",
+		constraint_name=>"BioSequence Name",
+		constraint_value=>$parameters{biosequence_name_constraint} );
+	return if ($biosequence_name_clauses eq '-1');
+
+	#### Build BIOSEQUENCE_GENE_NAME constraints
+	my $biosequence_gene_name_clauses = $sbeams->parseConstraint2SQL(
+		constraint_column=>"BS.biosequence_gene_name",
+		constraint_type=>"plain_text",
+		constraint_name=>"BioSequence Gene Name",
+		constraint_value=>$parameters{biosequence_gene_name_constraint} );
+	return if ($biosequence_gene_name_clauses eq '-1');
+
+	#### Build BIOSEQUENCE_DESC constraints
+	my $biosequence_desc_clauses = $sbeams->parseConstraint2SQL(
+		constraint_column=>"BS.biosequence_desc",
+		constraint_type=>"plain_text",
+		constraint_name=>"BioSequence Description",
+		constraint_value=>$parameters{biosequence_desc_constraint} );
+	return if ($biosequence_desc_clauses eq '-1');
+
+  my $repository_identifier_clauses = $sbeams->parseConstraint2SQL(
+    constraint_column=>"S.repository_identifiers",
+    constraint_type=>"plain_text",
+    constraint_name=>"repository_identifier_constraint",
+    constraint_value=>$parameters{repository_identifiers} );
+  return if ($repository_identifier_clauses eq '-1');
+
+  
+  #### Build SAMPLE_ID constraint
+  my  $samples_clause =  $sbeams->parseConstraint2SQL(
+    constraint_column=>"S.sample_tag",
+    constraint_type=>"plain_text",
+    constraint_name=>"Samples",
+    constraint_value=>$parameters{selected_experiment_constraint} );
+     return if ($samples_clause eq '-1');
+  
+  ## get organism_id to pass on to url_cols
+  my $tsql = qq~
+      SELECT BS.organism_id
+      FROM $TBAT_BIOSEQUENCE_SET BS
+      JOIN $TBAT_ATLAS_BUILD AB
+      ON (AB.biosequence_set_id = BS.biosequence_set_id)
+      where AB.atlas_build_id ='$parameters{atlas_build_id}'
+      ~;
+ 
+   my ($organism_id) = $sbeams->selectOneColumn($tsql) or
+       die "\nERROR: Unable to find the organism_id" .
+       " with $tsql\n\n";
+
+  $parameters{organism_id} = $organism_id;
+
+  ## handle file upload and clause for sql for $parameters{upload_file}
+  my $biosequence_names_clauses;
+  my %protein_hash;
+  my $run_name_clauses; 
+  if ($parameters{upload_file_exp}){
+      my $fh = $q->upload('upload_file_exp');
+     if (!$fh && $q->cgi_error)
+     {
+       print $q->header(-status=>$q->cgi_error);
+     } elsif (!$fh) {
+     }
+    # if file is a text file and is not too big, upload
+    if (-T $fh){
+       my %runs=();
+       while (my $line=<$fh>){
+          chomp $line;
+          my ($exp_tag, $run_name, $br, $tr, $frac, $labeling, $exp_label) = split(/[\t,]/, $line);
+          $runs{$run_name} =1;      
+       }
+       $run_name_clauses = "AND SM.run_name in ('". join("','", keys %runs) ."')";
+    }
+  }
+  if ( $parameters{upload_file} )
+  {
+     ## upload the file to a file handler
+     my $fh = $q->upload('upload_file');
+
+     if (!$fh && $q->cgi_error)
+     {
+       print $q->header(-status=>$q->cgi_error);
+     } elsif (!$fh) {
+       # We get here when, after successfully uploading, we sort by column.
+       #print "Could not create file handle for $parameters{upload_file}!\n"
+     }
+
+     # if file is a text file and is not too big, upload
+     if ( (-T $fh) && (-s $fh < 1000000)) ##size constraint of 10 MB, restrict $count < 30000
+     {
+       my $count = 0;
+       my $read_file=0;
+       my $prt;
+       ## protein list
+       while ($prt=<$fh>)
+       {
+         chomp($prt);
+         $prt =~ s/\s+$//;
+         if ($prt)
+         {
+             $protein_hash{$prt} = $prt;
+             $count = $count + 1;
+         }
+         last if ($count > 30000);
+      }
+    }
+    ## join with a commas:
+    my $protein_list = "";
+    foreach my $pr (keys %protein_hash)
+    {
+       $protein_list = "'$protein_hash{$pr}',$protein_list"; 
+    }
+    ## trim off last comma:
+    $protein_list =~ s/(.*)(,)$/$1/;
+
+		if ($protein_list =~ m/%/) {
+			my @tmp = split("," , $protein_list);
+			$biosequence_names_clauses = "   AND ( BS.biosequence_name LIKE  $tmp[0] ";
+			for (my $i = 1; $i < scalar(@tmp); $i++ ){
+				if (  $tmp[$i] ){
+					$biosequence_names_clauses .= "   OR BS.biosequence_name LIKE $tmp[$i]  ";
+				} 
+			}
+			$biosequence_names_clauses .=  " ) --end";
+		} else {
+			$log->debug(" in unless % ") ;
+			$biosequence_names_clauses ="   AND BS.biosequence_name IN ( $protein_list )";
+		}
+  } # if upload file
+  my ($sql, %colnameidx, @column_titles, $columns_clause);
+	#### Set flag to display SQL statement if user selected
+	my @column_array = (
+				["biosequence_name","BS.biosequence_name","Biosequence Name"],
+				["biosequence_gene_name","BS.biosequence_gene_name","Biosequence Gene Name"],
+				["presence_level","PPL.level_phrase","Presence Level in Build"],
+				["length", "DATALENGTH(BS.biosequence_seq)", "Biosequence Length"],
+				["sample_tag", "S.sample_tag", "Experiment Tag"],
+        ["run_name", "SM.run_name", "Run Name"],
+        ["avg_precursor_intensity","FORMAT(log(PQ.avg_precursor_intensity)/log(2), '0.0000')","log2(Top 3 Avg Precursor Intensity)"],
+				["biological_replicate", "SM.biological_replicate", "Biological Replicate"],
+        ["technical_replicate", "SM.technical_replicate", "Technical Replicate"],
+				["fraction", "SM.fraction","Fraction"],
+        ["labeling", "SM.label","Labeling"],
+        ["pct_coverage", "''", "Percent Coverage"],
+        ["n_pep", "''","N Distinct Peptides"],
+        ["n_obs", "''", "Total Obs"],
+				["biosequence_desc","CAST(BS.biosequence_desc AS varchar(255))","Protein Description"],
+			);
+	$columns_clause = $sbeams->build_SQL_columns_list(
+		column_array_ref=>\@column_array,
+		colnameidx_ref=>\%colnameidx,
+		column_titles_ref=>\@column_titles);
+
+	$sql = qq~
+		SELECT $columns_clause
+    FROM $TBAT_PROTEIN_QUANT PQ 
+    JOIN $TBAT_SAMPLE_METADATA SM ON (PQ.SAMPLE_METADATA_ID = SM.SAMPLE_METADATA_ID)
+		JOIN $TBAT_SAMPLE S ON (S.SAMPLE_ID = SM.SAMPLE_ID) 
+		JOIN $TBAT_ATLAS_BUILD_SEARCH_BATCH ABSB ON (S.SAMPLE_ID = ABSB.SAMPLE_ID)
+		JOIN $TBAT_PROTEIN_IDENTIFICATION PID ON (PID.BIOSEQUENCE_ID = PQ.BIOSEQUENCE_ID) 
+		JOIN $TBAT_PROTEIN_PRESENCE_LEVEL PPL ON ( PPL.PROTEIN_PRESENCE_LEVEL_ID = PID.PRESENCE_LEVEL_ID )
+		JOIN $TBAT_BIOSEQUENCE BS ON (BS.BIOSEQUENCE_ID = PQ.BIOSEQUENCE_ID)
+		WHERE 1 = 1
+		 AND PQ.atlas_build_id = $atlas_build_id
+		 $biosequence_name_clauses
+		 $biosequence_names_clauses
+		 $biosequence_gene_name_clauses
+		 $biosequence_desc_clauses
+		 $samples_clause
+		 $repository_identifier_clauses
+     $run_name_clauses
+     AND PPL.PROTEIN_PRESENCE_LEVEL_id in (1,17)
+  ~;
+
+  if ( $parameters{display_options} =~ /ShowSQL/ ) {
+    $show_sql = 1;
+  }
+
+
+  #### Certain types of actions should be passed to links
+  my $pass_action = "QUERY";
+  $pass_action = $apply_action if ($apply_action =~ /QUERY/i);
+  #$hidden_cols{'Sample id'} = 1;
+
+  my %url_cols = (
+     'Biosequence Name' => "$CGI_BASE_DIR/PeptideAtlas/GetProtein?atlas_build_id=$atlas_build_id&protein_name=\%$colnameidx{biosequence_name}V&apply_action=$pass_action",
+  );
+
+  #$show_sql = 1;
+
+  #########################################################################
+  #### If QUERY or VIEWRESULTSET was selected, display the data
+  if ($apply_action =~ /QUERY|VIEWRESULTSET|VIEWPLOT/i ) {
+    #### If the action contained QUERY, then fetch the results from the database
+    my %rs_exp_params = %rs_params;
+    my %rs_unfiltered_params = %rs_params;
+    my %rs_normalized_params = %rs_params;
+    my %rs_imputed_params = %rs_params;
+    my %rs_fc_params = %rs_params;
+    my %exp_data_cols = ();
+    my $msg = '';
+    if ($apply_action =~ /QUERY/i){
+      #### Show the SQL that will be or was executed
+      $sbeams->display_sql(
+	     sql=>$sql,
+	     use_tabbed_panes=> '1',
+      )if ($show_sql);
+      #### Fetch the results from the database server
+      my $use_caching = (defined $parameters{use_caching}) ? $parameters{use_caching} : 1;
+      $sbeams->fetchResultSet(
+        sql_query=>$sql,
+        resultset_ref=>$resultset_ref,
+        query_parameters_ref=>\%parameters,
+        use_caching =>$use_caching
+      );
+			#### Store the resultset and parameters to disk resultset cache
+			$rs_params{set_name} = "SETME";
+			my %write_params = ( rs_table => $TBAT_ATLAS_BUILD,
+													 key_field => 'atlas_build_id',
+													 key_value => $parameters{atlas_build_id} ,
+                           url_cols_ref => \%url_cols);
+			
+			$sbeams->writeResultSet(
+				resultset_file_ref=>\$rs_params{set_name},
+				resultset_ref=>$resultset_ref,
+				query_parameters_ref=>\%parameters,
+				resultset_params_ref=>\%rs_params,
+				query_name=>"$SBEAMS_SUBDIR/$PROG_NAME",
+				column_titles_ref=>\@column_titles,
+				%write_params
+			);
+			#### Post process the resultset
+			$msg = postProcessResultset(
+				rs_params_ref=>\%rs_params,
+				resultset_ref=>$resultset_ref,
+				resultset_exp_ref => $resultset_exp_ref,
+        resultset_postprocessed_ref => $resultset_postprocessed_ref,  
+				query_parameters_ref=>\%parameters,
+				column_titles_ref=>\@column_titles,
+        exp_data_cols => \%exp_data_cols
+			);
+
+			#### write experiment table
+			$rs_exp_params{__column_titles} = $resultset_exp_ref->{column_titles_ref};
+			$rs_exp_params{set_name} = $sbeamsMOD->make_resultset( rs_data => $resultset_exp_ref->{data_ref},
+																												 headers => $resultset_exp_ref->{column_titles_ref},
+																												 file_prefix => 'exptb_',
+																												 rs_params => \%rs_exp_params);
+
+
+      #### write protein intensity table
+      $rs_unfiltered_params{__column_titles} = $resultset_postprocessed_ref->{column_titles_ref};
+      $rs_unfiltered_params{set_name} = $sbeamsMOD->make_resultset( rs_data => $resultset_postprocessed_ref->{unfiltered_data}{data_ref},
+                                                         headers => $resultset_postprocessed_ref->{column_titles_ref},
+                                                         file_prefix => 'protI_',
+                                                         rs_params => \%rs_unfiltered_params);
+      #### write normalized protein intensity table
+      $rs_normalized_params{__column_titles} = $resultset_postprocessed_ref->{column_titles_ref};
+      $rs_normalized_params{set_name} = $sbeamsMOD->make_resultset( rs_data => $resultset_postprocessed_ref->{normalized_data}{data_ref},
+                                                         headers => $resultset_postprocessed_ref->{column_titles_ref},
+                                                         file_prefix => 'protInorm_',
+                                                         rs_params => \%rs_normalized_params);
+
+
+      #### write normalized protein intensity table
+      if ($msg eq '1'){
+
+        my $data_ref = $resultset_postprocessed_ref->{normalized_data}{data_ref};
+				if ($parameters{missing_value_imputation_contraint}){
+          data_imputation (resultset_postprocessed_ref => $resultset_postprocessed_ref,
+                           params => \%parameters,
+                           rs_set_name => $rs_normalized_params{set_name} );
+
+					#### write imputed protein intensity table
+					$rs_imputed_params{__column_titles} = $resultset_postprocessed_ref->{column_titles_ref};
+					$rs_imputed_params{set_name} = $sbeamsMOD->make_resultset( rs_data => $resultset_postprocessed_ref->{imputed_data}{data_ref},
+																														 headers => $resultset_postprocessed_ref->{column_titles_ref},
+																														 file_prefix => 'protIimpute_',
+                                                         rs_params => \%rs_imputed_params);
+          $data_ref = $resultset_postprocessed_ref->{imputed_data}{data_ref};
+        }
+        
+        my $exp_cnt = scalar keys %exp_data_cols; 
+				for (my $i=1; $i<= $exp_cnt; $i++){ 
+					for (my $j = $i+1; $j <=$exp_cnt; $j++){
+						my @results = ();
+						$msg = $STATISTICS->ttest_analysis(data =>$data_ref,
+																								column_titles_ref => $resultset_postprocessed_ref->{column_titles_ref},
+																								sample1_tag => "exp$i",
+																								sample2_tag => "exp$j",
+																								sample1_cols => \@{$exp_data_cols{"exp$i"}},
+																								sample2_cols => \@{$exp_data_cols{"exp$j"}},
+																								results => \@results);
+						if ($msg ne '1'){
+						   $resultset_postprocessed_ref->{fc}{data_ref} = {};
+               last;	
+						}else{
+						 	 push @{$resultset_postprocessed_ref->{fc}{data_ref}}, @results;
+            }
+					}
+				}
+				$rs_fc_params{__column_titles} = [('Biosequence Name','Experiments', 'Values', 'fc', 'tval','pval','qval')]; 
+				$rs_fc_params{set_name} = $sbeamsMOD->make_resultset( rs_data => $resultset_postprocessed_ref->{fc}{data_ref},
+                                                         headers => $rs_fc_params{__column_titles}, 
+                                                         file_prefix => 'protIfc_',
+                                                         rs_params => \%rs_fc_params);
+      }
+    }
+    
+		my $obs_help = $sbeamsMOD->get_table_help(column_titles_ref=>\@column_titles); 
+	  if (($apply_action =~ /VIEWRESULTSET/i && $rs_params{set_name} !~ /(exptb|protI)/i) || $apply_action =~ /QUERY|VIEWPLOT/i){
+			#### Display the resultset
+			$sbeams->displayResultSet(
+				resultset_ref=>$resultset_ref,
+				query_parameters_ref=>\%parameters,
+				rs_params_ref=>\%rs_params,
+				url_cols_ref=>\%url_cols,
+				hidden_cols_ref=>\%hidden_cols,
+				max_widths=>\%max_widths,
+				use_tabbed_panes => 1,
+				column_titles_ref=>\@column_titles,
+				column_help=>$obs_help,
+				base_url=>$base_url,
+			);
+
+			#### Display the resultset controls
+			$sbeams->displayResultSetControls(
+				resultset_ref=>$resultset_ref,
+				query_parameters_ref=>\%parameters,
+				rs_params_ref=>\%rs_params,
+				base_url=>$base_url,
+				use_tabbed_panes=>'1',
+        hide_row_count => 1
+			);
+
+    }
+
+    my %rs_params_sets = (unfiltered_data => \%rs_unfiltered_params,
+													normalized_data => \%rs_normalized_params,
+                          imputed_data => \%rs_imputed_params,
+                          fc => \%rs_fc_params);
+
+    if (($apply_action =~ /VIEWRESULTSET/i && $rs_params{set_name} =~ /(exptb|protI)/i) || $apply_action =~ /QUERY|VIEWPLOT/i){
+      my @tab_labels = ('Experiments', 'Protein Intensity', 'Normalized Protein Intensity','Data Imputation', 'Fold Change');
+      if ($apply_action =~ /VIEWRESULTSET/i){
+         #### Display the experiment table
+        $sbeams->displayResultSet(
+          resultset_ref=>$resultset_ref,
+          query_parameters_ref=>\%parameters,
+          rs_params_ref=>\%rs_params,
+          max_widths=>\%max_widths,
+          use_tabbed_panes => 1,
+          nowrap => [1],
+          column_titles_ref=>$resultset_ref->{column_titles_ref},
+          base_url=>$base_url,
+          tab_label => $tab_labels[0],
+        );
+        #### Display the resultset controls
+        $sbeams->displayResultSetControls(
+          resultset_ref=>$resultset_ref,
+          query_parameters_ref=>\%parameters,
+          rs_params_ref=>\%rs_params,
+          base_url=>$base_url,
+          use_tabbed_panes=>'1',
+          hide_row_count => 1
+        );
+      }else{
+        my $idx = 0; 
+				#### Display the experiment table
+				$sbeams->displayResultSet(
+					resultset_ref=>$resultset_exp_ref,
+					query_parameters_ref=>\%parameters,
+					rs_params_ref=>\%rs_exp_params,
+					max_widths=>\%max_widths,
+					use_tabbed_panes => 1,
+					nowrap => [1],
+					column_titles_ref=>$resultset_exp_ref->{column_titles_ref},
+					base_url=>$base_url,
+					table_id =>  "TBL_$idx",
+					tab_label => $tab_labels[$idx],
+				);
+				#### Display the resultset controls
+				$sbeams->displayResultSetControls(
+					resultset_ref=>$resultset_exp_ref,
+					query_parameters_ref=>\%parameters,
+					rs_params_ref=>\%rs_exp_params,
+					base_url=>$base_url,
+					use_tabbed_panes=>'1',
+					table_id =>  "TBL_$idx",
+          hide_row_count => 1
+				);
+        #### Display the processed result
+        $idx=0;
+        my @tabs = qw(unfiltered_data normalized_data imputed_data fc);
+    
+				foreach my $key (@tabs){
+          $idx++;
+          my $ref = {}; 
+          if ($key ne 'fc'){
+						$ref->{column_hash_ref}  = $resultset_postprocessed_ref->{column_hash_ref};
+						$ref->{column_titles_ref} = $resultset_postprocessed_ref->{column_titles_ref};
+						$ref->{precisions_list_ref} = $resultset_postprocessed_ref->{precisions_list_ref};
+						$ref->{types_list_ref} = $resultset_postprocessed_ref->{types_list_ref};
+          }else{
+            $msg =~ s/ at.*//;
+						if ($msg =~ /has only one value/){
+							$sbeams->reportException(
+								state => 'ERROR',
+								type => 'Two few values',
+								message => "<font color='red'>$msg</font>",
+							);
+						}elsif($msg =~ /has only one run/){
+							$sbeams->reportException(
+								state => 'ERROR',
+								type => 'Two few runs',
+								message => "<font color='red'>$msg</font>",
+							);
+							return;
+						}elsif ($msg && $msg ne 1 ){
+							$sbeams->reportException(
+								state => 'ERROR',
+								type => 'fold change analysis failed',
+								message => "<font color='red'>$msg</font>",
+							);
+							return;
+						}
+
+						$ref->{column_hash_ref}  = $resultset_postprocessed_ref->{column_hash_ref};
+						$ref->{column_titles_ref} = [('Biosequence Name','Experiments','Values', 'fc', 'tval','pval','qval')]; 
+						$ref->{precisions_list_ref} = [ (100) x 7];
+						$ref->{types_list_ref} = [('varchar','varchar','varchar','varchar','varchar','varchar','varchar')]; 
+          }
+          $ref->{data_ref} = $resultset_postprocessed_ref->{$key}{data_ref};
+					$sbeams->displayResultSet(
+						resultset_ref=>$ref,
+						query_parameters_ref=>\%parameters,
+						rs_params_ref=>$rs_params_sets{$key},
+						max_widths=>\%max_widths,
+						use_tabbed_panes => 1,
+						nowrap => [1],
+						column_titles_ref=>$ref->{column_titles_ref},
+						base_url=>$base_url,
+						table_id =>  "TBL_$idx",
+						tab_label => $tab_labels[$idx],
+					);
+					#### Display the resultset controls
+					$sbeams->displayResultSetControls(
+						resultset_ref=>$ref,
+						query_parameters_ref=>\%parameters,
+						rs_params_ref=> $rs_params_sets{$key},
+						base_url=>$base_url,
+						use_tabbed_panes=>'1',
+						table_id =>  "TBL_$idx",
+            hide_row_count => 1,
+					);
+				}
+      }
+    }
+		#### add Plot tab
+		add_plot_tab (params => \%rs_params_sets) if ($sbeams->output_mode() eq 'html');
+
+  #### If QUERY was not selected, then tell the user to enter some parameters
+  } else {
+     if ($sbeams->invocation_mode() eq 'http') {
+      print "<H4>Select parameters above and press QUERY</H4>\n";
+     } else {
+      print "You need to supply some parameters to constrain the query\n";
+     }
+  }
+
+} # end handle_request
+###############################################################################
+## add_plot_tab 
+###############################################################################
+sub add_plot_tab {
+  my %args = @_;
+  my $params = $args{params};
+	print $sbeams->addTabbedPane(label => "Plot");
+	print qq~
+		<style>
+		/* Style the tab content */
+		.tabcontent {
+			display: none;
+			padding: 6px 12px;
+			border: 1px solid #ccc;
+			border-top: none;
+		}
+		</style>
+	 <script>
+    var plottabs = ["box_plot","box_plot_norm","cor_heatmap","volc"];
+
+		function generateSVG(evt, plot_id, set_name) {
+			evt.preventDefault();
+      var plot_containter_id = plot_id + '_content';
+
+			var i;
+			for (i = 0; i < plottabs.length; i++) {
+				document.getElementById(plottabs[i]).className = 'formtab';
+
+        var content_id = plottabs[i] + '_content';
+        document.getElementById(content_id).style.display='none';
+			}
+
+      document.getElementById(plot_containter_id).style.display = 'inline';
+      document.getElementById(plot_containter_id).style.whiteSpace = 'nowrap';
+      document.getElementById(plot_id).className = "formtabON"; 
+
+      if ( document.getElementById(plot_containter_id).innerHTML != ''){
+        return;
+      }
+
+			var formData = new FormData(document.getElementById('svgForm'));
+			var xhr = new XMLHttpRequest();
+      document.getElementById(plot_containter_id).innerHTML = "Loading image ...";
+
+			params = 'mode=' + plot_id + '&rs_set_name=' + set_name 
+			xhr.open('POST', '$CGI_BASE_DIR/PeptideAtlas/plot.py' + "?" + params, true);
+			xhr.onload = function () {
+				if (xhr.status >= 200 && xhr.status < 300) {
+					if (plot_id == 'volc'){
+						// Parse the JSON data
+						try {
+							var parsedData = JSON.parse(xhr.responseText);
+							// Create a plot using Plotly.js
+              document.getElementById(plot_containter_id).innerHTML = ""
+							Plotly.newPlot(plot_containter_id, parsedData.data, parsedData.layout);
+            }catch(error){
+               document.getElementById(plot_containter_id).innerHTML = "<font color='red'> " + xhr.responseText + '</font>'; 
+            }
+					}else{
+						document.getElementById(plot_containter_id).innerHTML = xhr.responseText;
+					}
+				} else {
+					 //console.error('Request failed with status ' + xhr.status);
+           document.getElementById(plot_containter_id).innerHTML = 'Loading image failed with status: <font color="red"' + xhr.status + '</font>';
+				}
+			};
+			xhr.send(formData);
+		}
+    document.getElementById("messagetab").innerHTML = " ";
+
+	 </script>
+	 <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+	 <form id="svgForm">
+	 <TABLE cellpadding='0' class='resultsettabs'>
+   <tr>
+    <td class='formtabbase'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+		<td class="formtab" id='box_plot' onclick="generateSVG(event, 'box_plot', '$params->{unfiltered_data}->{set_name}')">
+       <a>&nbsp;&nbsp;&nbsp;intensity boxplot&nbsp;&nbsp;&nbsp;</a></td>
+    <td class='formtabbase'>&nbsp;&nbsp;&nbsp;</td>
+    <td class="formtab" id='box_plot_norm' onclick="generateSVG(event, 'box_plot_norm', '$params->{normalized_data}->{set_name}')">
+       <a>&nbsp;&nbsp;&nbsp;normalized intensity boxplot&nbsp;&nbsp;&nbsp;</a></td>
+    <td class='formtabbase'>&nbsp;&nbsp;&nbsp;</td>
+		<td class="formtab" id='cor_heatmap' onclick="generateSVG(event,'cor_heatmap', '$params->{normalized_data}->{set_name}')">
+       <a>&nbsp;&nbsp;&nbsp;correlation heatmap&nbsp;&nbsp;&nbsp;</a></td>  
+    <td class='formtabbase'>&nbsp;&nbsp;&nbsp;</td>
+		<td class="formtab" id='volc' onclick="generateSVG(event,'volc', '$params->{fc}->{set_name}')">
+       <a>&nbsp;&nbsp;&nbsp;volcano plot&nbsp;&nbsp;&nbsp;</a></td>
+    <td class='formtabbase' width='800'>&nbsp;&nbsp;&nbsp;</td>
+   </tr>
+	 </TABLE>
+	 </form>
+		<div class="tabcontent" id="box_plot_content" width="800" height="600"></div>
+    <div class="tabcontent" id="box_plot_norm_content" width="800" height="600"></div>
+		<div class="tabcontent" id="cor_heatmap_content" width="800" height="600"></div>
+		<div class="tabcontent" id="volc_content" width="800" height="600"></div>
+   
+	~;
+
+
+}
+
+###############################################################################
+# evalSQL
+#
+# Callback for translating Perl variables into their values,
+# especially the global table variables to table names
+###############################################################################
+sub evalSQL {
+  my $sql = shift;
+
+  return eval "\"$sql\"";
+
+} # end evalSQL
+
+#######################################################################
+sub getOrganismFullName 
+{
+    my %args = @_;
+    
+    my $organism_id = $args{organism_id};
+
+    my $sql = qq~
+        SELECT full_name
+        FROM $TB_ORGANISM
+        WHERE organism_id = '$organism_id'
+        AND record_status != 'D'
+    ~;
+
+    my ($full_name) = $sbeams->selectOneColumn($sql);
+
+    ## replace spaces with _
+    $full_name =~ s/ /\_/g;
+
+    return $full_name;
+}
+###############################################################################
+# postProcessResultset
+#
+# Perform some additional processing on the resultset that would otherwise
+# be very awkward to do in SQL.
+###############################################################################
+sub postProcessResultset {
+  my %args = @_;
+
+  my ($i,$element,$key,$value,$line,$result,$sql);
+
+  #### Process the arguments list
+  my $resultset_ref = $args{'resultset_ref'};
+  my $resultset_exp_ref = $args{'resultset_exp_ref'};
+  my $resultset_postprocessed_ref = $args{'resultset_postprocessed_ref'};
+
+  my $rs_params_ref = $args{'rs_params_ref'};
+  my $query_parameters_ref = $args{'query_parameters_ref'};
+  my $column_titles_ref = $args{'column_titles_ref'};
+  my $hidden_col_ref = $args{'hidden_col_ref'};
+  my $exp_data_cols = $args{'exp_data_cols'};
+
+  my %rs_params = %{$rs_params_ref};
+  my %parameters = %{$query_parameters_ref};
+
+  my $n_rows = scalar(@{$resultset_ref->{data_ref}});
+  my $cols = $resultset_ref->{column_hash_ref};
+  my %data = ();
+  my %samples = ();
+  my @result_data =();
+  my %normalized_data;
+  my $msg= ''; 
+  for ($i=0; $i<$n_rows; $i++) {
+    my $val = $resultset_ref->{data_ref}->[$i]->[$cols->{avg_precursor_intensity}]; 
+    my $sample_tag = $resultset_ref->{data_ref}->[$i]->[$cols->{sample_tag}];
+    my $prot = $resultset_ref->{data_ref}->[$i]->[$cols->{biosequence_name}];
+    my $prot_desc = $resultset_ref->{data_ref}->[$i]->[$cols->{biosequence_desc}];
+		my $gene_name = $resultset_ref->{data_ref}->[$i]->[$cols->{biosequence_gene_name}];
+    my $run_name = $resultset_ref->{data_ref}->[$i]->[$cols->{run_name}];
+		my $biological_replicate = $resultset_ref->{data_ref}->[$i]->[$cols->{biological_replicate}];
+    my $technical_replicate = $resultset_ref->{data_ref}->[$i]->[$cols->{technical_replicate}];
+    my $fraction = $resultset_ref->{data_ref}->[$i]->[$cols->{fraction}];
+    my $label = $resultset_ref->{data_ref}->[$i]->[$cols->{labeling}];
+
+    next if ($prot =~ /(CONTAM|DECOY)/);
+    $data{$prot}{desc} = $prot_desc; 
+		$data{$prot}{gene_name} = $gene_name;
+    $data{$prot}{$sample_tag}{$run_name} = sprintf("%.4f", $val);
+    $samples{$sample_tag}{$run_name} = "$biological_replicate,$technical_replicate,$fraction,$label";
+  }
+  
+  filter_and_normalize (value=>\%data,
+                 samples => \%samples,
+                 resultset_postprocessed_ref => $resultset_postprocessed_ref, 
+                 params => \%parameters);
+
+	my @sample_tags = sort {$a cmp $b} keys %samples ;
+	my @type_list = qw(varchar varchar);
+	my @column_list;
+	my (@column_list, %colnameidx, @column_titles);
+ 
+  push @column_list, ['Biosequence Name', 'Biosequence Name', 'Biosequence Name']; 
+  push @column_list, ['Biosequence Gene Name', 'Biosequence Gene Name', 'Biosequence Gene Name'];
+	$resultset_postprocessed_ref->{column_hash_ref}{'Biosequence Name'} = 0; 
+	$resultset_postprocessed_ref->{column_hash_ref}{'Biosequence Gene Name'} = 1;
+
+  my $exp_cnt = 1; 
+	foreach my $col ( @sample_tags){
+    my $run_cnt = 1;
+    foreach my $run (sort {$a cmp $b} keys %{$samples{$col}}){
+			push @column_list, ["exp$exp_cnt"."_r$run_cnt","exp$exp_cnt"."_r$run_cnt","exp$exp_cnt"."_r$run_cnt"];
+      push @type_list, 'varchar';
+      $run_cnt++;
+    }
+    $exp_cnt++;
+	}
+
+	my $n_columns = scalar @column_list;
+	$sbeams->build_SQL_columns_list(
+		column_array_ref=>\@column_list,
+		colnameidx_ref=>\%colnameidx,
+		column_titles_ref=>\@column_titles
+	);
+  
+  ### unnormalized result
+	$resultset_postprocessed_ref->{column_hash_ref} = \%colnameidx; 
+	$resultset_postprocessed_ref->{column_titles_ref} = \@column_titles;
+	$resultset_postprocessed_ref->{precisions_list_ref} = [ (2) x $n_columns];
+	$column_titles_ref = \@column_titles;  
+	$resultset_postprocessed_ref->{types_list_ref} = \@type_list;
+
+  
+
+	## get experiment table info
+  %{$resultset_exp_ref->{column_hash_ref}} = ('Experiment' => 0,
+                                          'Run Name' => 1,
+                                          'Biological Replicate'=> 2,
+                                          'Technical  Replicate'=> 3,
+																					'Fraction' => 4,
+                                          'Labeling' => 5,
+                                          'Experiment_Label' => 6,
+																					);
+	@{$resultset_exp_ref->{types_list_ref}} = qw(varchar varchar int int int varchar varchar varchar);
+	$resultset_exp_ref->{precisions_list_ref} = [100, (10) x 6 ];
+  @{$resultset_exp_ref->{column_titles_ref}} = ('Experiment_Tag', 'Run Name', 'Biological Replicate',
+                                                'Technical  Replicate', 'Fraction', 'Labeling',
+                                                'Experiment_Label');
+	my @column_list = ();
+  foreach my $col (@{$resultset_exp_ref->{column_titles_ref}}){
+    push @column_list , ["$col","$col","$col"];
+  }
+  $resultset_exp_ref->{column_list_ref} = \@column_list;
+
+  my @exp_data = ();
+  my $exp_col = 2;
+  $exp_cnt = 1;
+	foreach my $sample_tag(@sample_tags){
+    my $run_cnt = 1;
+		foreach my $r ( sort {$a cmp $b} keys %{$samples{$sample_tag}}){
+      my @data = ($sample_tag, $r);
+      push @data, split(",", $samples{$sample_tag}{$r});
+      push @data, ("exp$exp_cnt"."_r$run_cnt");
+      push @{$exp_data_cols->{"exp$exp_cnt"}}, $exp_col;
+      $run_cnt++;
+      $exp_col++;
+			push @exp_data, [@data];
+    }
+    if ($run_cnt == 2){
+      $msg = "$sample_tag has only one run";
+    } 
+    $exp_cnt++;
+  }	
+  $resultset_exp_ref->{data_ref} = \@exp_data;
+
+  #### get fc for each pair of experiment
+
+  if ($msg){
+     return $msg;
+  }
+  
+
+  return 1;
+} # end postProcessResult
+
+
+#################################################################################################################
+### filter out proteins that has missing value > max missing allowed
+### normalize intensity value accross runs and experiments
+#################################################################################################################
+sub filter_and_normalize {
+  my %args = @_;
+  my %parameters = %{$args{params}};
+  my %values = %{$args{value}};
+  my $resultset_postprocessed_ref = $args{resultset_postprocessed_ref};
+  my $samples = $args{samples};
+  my %runs= ();
+  my @all_intensities =();
+  my $stat;
+
+  ## the median of the median peak intensity across all of the runs
+  my $msg = 0;
+  my %removed_prot = ();
+  my @unfiltered_data = ();
+  my @filtered_data;   
+  my @normalized_data ; 
+  my @experiments = sort {$a cmp $b} keys %{$samples};
+
+  my @row_data = ('protein', 'gene');  
+  my $exp_cnt = 1;
+  foreach my $exp(@experiments){
+    my $run_cnt = 1;
+    foreach my $run (sort {$a cmp $b} keys %{$samples->{$exp}}){
+      push @row_data, "exp$exp_cnt"."_r$run_cnt";
+      $run_cnt++;
+    }
+    $exp_cnt++;
+  }
+  push @unfiltered_data, \@row_data;
+	foreach my $prot (sort {$a cmp $b} keys %values){
+    my @row_data =();
+    push @row_data, $prot;
+    push @row_data, $values{$prot}{gene_name};
+		foreach my $exp(@experiments){
+			foreach my $run (sort {$a cmp $b} keys %{$samples->{$exp}}){
+				if (defined $values{$prot}{$exp}{$run}){
+					push @row_data, $values{$prot}{$exp}{$run};
+				}else{
+          push @row_data, ''; 
+        }
+			}
+		}
+    push @unfiltered_data, \@row_data;
+  }
+
+  if ($parameters{filter_missing_value_contraint} == 1){
+		fraction_filter (data => \@unfiltered_data,
+               filtered_data => \@filtered_data,
+               max_missing_ratio => 0.2);
+  }elsif($parameters{filter_missing_value_contraint} == 3){
+    fraction_filter (data => \@unfiltered_data,
+               filtered_data => \@filtered_data,
+               max_missing_ratio => 0);
+
+  }else{
+    cond_filter (data => \@unfiltered_data,
+               filtered_data => \@filtered_data,
+               min_run => 3);
+  }
+  shift @unfiltered_data;
+  $resultset_postprocessed_ref->{unfiltered_data}{data_ref} = \@unfiltered_data;
+ 
+  my @first_column =  map { $_->[0] } @filtered_data; 
+  my @second_column =  map { $_->[1] } @filtered_data;
+
+  # first column from filtered_data
+  for my $row (@filtered_data) {
+    shift @$row; # Remove first column
+    shift @$row; # Remove second column
+  }
+
+  # equalize medians normalization
+  if ( $parameters{normalization_method_contraint} == 1 ){
+    $msg = $STATISTICS->equal_median_normalization(data => \@filtered_data, normalized_data => \@normalized_data);
+  #Interquartile normalization
+  }elsif ( $parameters{normalization_method_contraint} == 2 ){
+    $msg = $STATISTICS->iqr_normalization(data => \@filtered_data, normalized_data => \@normalized_data);    
+  }elsif ( $parameters{normalization_method_contraint} == 3){
+  #variance stabilizing normalization
+    $msg = $STATISTICS->vsn_normalization(data => \@filtered_data, normalized_data => \@normalized_data);
+  #no normalization
+  }else{
+    @normalized_data = @filtered_data;
+  }
+  if (! @normalized_data){
+    $resultset_postprocessed_ref->{normalized_data}{data_ref} = \@normalized_data;
+    return $msg;
+  }
+
+  ## add header and first two column;
+  for my $i (0..$#normalized_data) {
+    unshift @{$normalized_data[$i]}, ($first_column[$i], $second_column[$i]);
+  }
+
+  $resultset_postprocessed_ref->{normalized_data}{data_ref} = \@normalized_data;
+  return 1; 
+}
+
+## Filter for proteins that have less than max_missing_ratio across runs in all experiments.
+sub fraction_filter{
+  my %args = @_;
+  my @data = @{$args{data}};
+  my $filtered_data = $args{filtered_data};
+  my $max_missing_ratio = $args{max_missing_ratio};
+  foreach my $i (1..$#data) {
+    my @row_data = @{$data[$i]};
+    my $missing_count = 0;
+    my $total_count = 0;
+    foreach my $value (@row_data[2..$#row_data]) {
+      $total_count++;
+      $missing_count++ if $value eq '';
+    }
+    my $missing_ratio = $missing_count / $total_count;
+    if ($missing_ratio <= $max_missing_ratio) {
+      push @$filtered_data, \@row_data;
+    }
+  }
+}
+
+
+## Filter for proteins that have value in at least 3 runs in one experiments
+sub cond_filter{
+  my %args = @_;
+  my @data = @{$args{data}};
+  my $filtered_data = $args{filtered_data};
+  my $min_run = $args{min_run};
+  my @header = @{$data[0]};
+  my %exp = ();
+  foreach my $col (@header){
+    next if ($col !~ /^exp\d/);
+    $col =~ s/_r\d+//;
+    $exp{$col} =1 ;
+  }
+  # Find indices of columns matching the criteria
+  my @indices_to_extract;
+  foreach my $col (sort {$a cmp $b} keys %exp) {
+    my @matching_indices = grep { $data[0][$_] =~ /$col/ } 2..$#{$data[0]};
+    push @indices_to_extract, \@matching_indices;
+  }
+	foreach my $i (1..$#data) {
+    my @row_data = @{$data[$i]};
+    my $pass = 0;
+    foreach my $indices (@indices_to_extract){
+      my $value_count = grep { defined($_) && $_ ne '' } @row_data[@$indices]; 
+      if ($value_count >= $min_run){
+        $pass=1;
+      }
+    }
+    push @$filtered_data, \@row_data if ($pass);
+  }
+}
+
+####
+sub data_imputation {
+  my %args = @_;
+  my %parameters = %{$args{params}};
+  my $set_name = $args{rs_set_name} || '';
+  my $resultset_postprocessed_ref = $args{resultset_postprocessed_ref};
+  my @data = @{$resultset_postprocessed_ref->{normalized_data}{data_ref}};
+
+  if ($set_name eq ''){
+        $sbeams->reportException(
+      state => 'ERROR',
+      type => 'Missing result',
+      message => 'Normalized result missing',
+    );
+    return;
+  }
+
+  my $json_data = encode_json(\@data);
+  my $python_script = 'plot.py';
+  my $python_executable = '/proteomics/sw/python/python3/bin/python3';
+  my $imputed_data;
+
+  if($parameters{missing_value_imputation_contraint} == 1){
+		my $output = `$python_executable $python_script impute $set_name`;
+		# Decode the JSON output from Python script
+		$imputed_data = decode_json($output);
+  }
+  $resultset_postprocessed_ref->{imputed_data}{data_ref} = $imputed_data;
+}

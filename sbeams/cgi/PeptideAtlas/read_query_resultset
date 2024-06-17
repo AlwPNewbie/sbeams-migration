@@ -1,0 +1,73 @@
+#!/usr/local/bin/perl
+
+###############################################################################
+# Set up all needed modules and objects
+###############################################################################
+use strict;
+use Getopt::Long;
+use FindBin;
+use Data::Dumper;
+use JSON;
+
+use lib "$FindBin::Bin/../../lib/perl";
+use vars qw ($sbeams $sbeamsMOD $q $current_contact_id $current_username
+             $accessible_project_ids
+             $PROG_NAME $USAGE %OPTIONS $QUIET $VERBOSE $DEBUG $DATABASE
+             $TABLE_NAME $CATEGORY $DB_TABLE_NAME
+             @MENU_OPTIONS);
+
+use SBEAMS::Connection qw($q $log);
+use SBEAMS::Connection::Settings;
+$sbeams = new SBEAMS::Connection;
+$sbeams->setSBEAMS_SUBDIR($SBEAMS_SUBDIR);
+
+
+#my $set_name = 'protI_guest_20240531-130325-138';
+my $set_name = shift;
+
+my %resultset = ();
+my @resultset_exp =();
+my @column_tiles = ();
+$sbeams->readResultSet( resultset_file=>$set_name,
+												resultset_ref=>\%resultset,
+                        column_titles_ref => \@column_tiles );
+
+
+processResult (resultset_ref=>\%resultset,
+               resultset_exp_ref => \@resultset_exp,
+               column_tiles_ref => \@column_tiles );
+
+# Convert Perl data structure to JSON
+my $json = JSON->new->utf8->encode(\@resultset_exp);
+
+# Print JSON data
+print $json;
+
+#######################################################################
+sub processResult{
+  my %args = @_;
+
+  my $resultset_ref = $args{'resultset_ref'};
+  my $resultset_exp_ref = $args{'resultset_exp_ref'};
+  my $column_titles_ref = $args{'column_tiles_ref'};
+  my $n_rows = scalar(@{$resultset_ref->{data_ref}});
+  my $cols = $resultset_ref->{column_hash_ref};
+  my %samples = ();
+  
+
+	my @column_titles = ('protein');
+	for my $i (1..scalar @$column_titles_ref-1){
+		 push @column_titles, $column_titles_ref->[$i];
+	}
+
+	push @{$resultset_exp_ref} , \@column_titles;
+
+  for (my $i=0; $i<$n_rows; $i++) {
+    my $prot = $resultset_ref->{data_ref}->[$i]->[$cols->{'Biosequence Name'}];
+    next if ($prot =~ /(CONTAM|DECOY)/);
+    my @values = @{$resultset_ref->{data_ref}->[$i]};
+		#splice(@values, 1, 1);
+    push @{$resultset_exp_ref} , \@values; 
+  }
+
+} 
