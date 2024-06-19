@@ -188,8 +188,8 @@ sub get_help_links {
                      'prec_max_mz' => "Maximum precursor ion m/z value for library entries ",
                      'frag_min_mz' => "Minimum fragment ion m/z value for library entries ",
                      'frag_max_mz' => "Maximum fragment ion m/z value for library entries ",
-                       'cmod_mass' => 'Generate transision with heavy-labeled versions of selected amino acids, Use ctrl-shift for multiple options.',
-                       'cmod_opts' => $q->escape( 'Generate heavy transitions, light and heavy (L & H), or light only (default).  Relevant only if one or more heavy label options are selected.' ),
+                     'cmod_mass' => 'Generate transision with heavy-labeled versions of selected amino acids, Use ctrl-shift for multiple options.',
+                     'cmod_opts' => $q->escape( 'Generate heavy transitions, light and heavy (L & H), or light only (default).  Relevant only if one or more heavy label options are selected.' ),
                      'swaths_file' => "File of SWATH bins, format is lower mz bound 'tab' upper bound mz 'newline' ",
                      'no_swaths_file' => "SWATH file not needed, ion library filtered at analysis time (Peakview) ",
                      'swath_size' => "Size of each SWATH bin, default is 25 Th ",
@@ -350,6 +350,19 @@ sub get_library_table {
 
   my $help = qq~
    <br>
+   <style>
+	#outer {
+            margin: 0 auto; /*center*/
+            width:200px;
+            background-color:red; /*just to display the example*/
+        }
+
+    #inner {
+            /*move the whole container 50px to the left side*/
+            margin-left:-50px; 
+            margin-right:50px;
+		}
+   </style>
    <div style="font-family:Barlow, Arial, sans-serif;color: #002664; font-size:150%;font-weight:700" id=heading>
    <font color =#ff5f00 >|</font> Library Download </div>
   ~;
@@ -613,8 +626,10 @@ sub get_subset_form {
       } else {
         my $fname = $sbeams->getRandomString( num_chars => 20 );
 
-#        my $exec = "$PHYSICAL_BASE_DIR/lib/scripts/PeptideAtlas/extract_ionlibrary_subset.pl --in $path --out /tmp/$fname --format $format ";
-	my $exec = "/proteomics/sw/scripts/extract_ionlibrary_subset.pl --in $path --out /tmp/$fname --format $format ";
+        #my $exec = "$PHYSICAL_BASE_DIR/lib/scripts/PeptideAtlas/extract_ionlibrary_subset.pl --in $path --out /tmp/$fname --format $format ";
+		my $exec = "$PHYSICAL_BASE_DIR/lib/scripts/PeptideAtlas/extract_ionlibrary_subsetprotswscript.pl --in $path --out /tmp/$fname --format $format ";
+		
+#	my $exec = "/proteomics/sw/scripts/extract_ionlibrary_subset.pl --in $path --out /tmp/$fname --format $format ";
         if ( $params->{swaths_file} ) {
           my $file_name = $q->param( 'swaths_file' );
           my $sfile = $sbeams->getRandomString( num_chars => 20 );
@@ -671,6 +686,8 @@ sub get_subset_form {
         if ( $params->{cmod_mass} && $params->{cmod_opts} ) {
           $exec .= "--cmod_mass $params->{cmod_mass} --cmod_opts $params->{cmod_opts} ";
         }
+		
+		#print "$params->{cmod_mass} --cmod_opts $params->{cmod_opts}";
 
 
         $log->info( $exec );
@@ -750,7 +767,7 @@ sub get_subset_form {
 
   my %orgs;
   my %inst;
-  my $format_constraint =  " AND file_format IN ('peakview', 'openswath', 'mprophet' ) ";
+  my $format_constraint =  " AND file_format IN ('peakview', 'openswath', 'mprophet' ,'prosit', 'spectronaut') ";
   if ( $params->{format} ) {
     $format_constraint = "AND file_format = '$params->{format}'";
   }
@@ -829,6 +846,7 @@ sub get_subset_form {
 
   my $cmod_mass_select = get_cmod_select( $params->{cmod_mass} );
   my $cmod_opts_radio = get_cmod_radio( $params->{cmod_opts} );
+  
 
   my $form = qq~
   $help
@@ -1096,12 +1114,11 @@ sub get_cmod_select {
 
 sub get_cmod_radio {
   my $curr_val = shift || 'light_only';
-  my %sel = (  light_only => '', 'heavy_only' => '', both => '' );
+  my %sel = (  light_only => '', both => '' );
   $sel{$curr_val} = 'checked';
 
   my $cmod_radio = qq~
   <INPUT TYPE=radio name=cmod_opts $sel{light_only} value=light_only> Light only </INPUT>
-  <INPUT TYPE=radio name=cmod_opts $sel{heavy_only} value=heavy_only> Heavy only </INPUT>
   <INPUT TYPE=radio name=cmod_opts $sel{both} value=both> L & H </INPUT>
   ~;
   return $cmod_radio;
