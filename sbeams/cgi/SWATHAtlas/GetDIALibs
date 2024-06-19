@@ -756,7 +756,7 @@ sub get_subset_form {
    <div style="font-family:Barlow, Arial, sans-serif;color: #002664; font-size:150%;font-weight:700" id=heading>
    <font color =#ff5f00 >|</font> Custom Library Download </div>
    <div id=help style="width:720px; font-family:Barlow, Arial, sans-serif;color: #002664; font-size:100%;font-weight:700"><br><br> This form allows you to a list of proteins to extract a subset SWATH/DIA library. This can be done with a user-uploaded list, or with any of the 
-   Biology/Disease-driven Human Proteome Project ( <a href="http://db.systemsbiology.net/devDC/sbeams/cgi/PeptideAtlas/proteinList?protein_list_id=2"> B/D-HPP </a>) contributed lists.
+   Biology/Disease-driven Human Proteome Project ( <a href="http://db.systemsbiology.net/devCM/sbeams/cgi/PeptideAtlas/proteinList?protein_list_id=2"> B/D-HPP </a>) contributed lists.
   </div>
   ~;
 
