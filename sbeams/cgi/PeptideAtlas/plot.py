@@ -29,7 +29,6 @@ import plotly.io as pio
 #import ext.easyMLR as emlr
 #script_directory = os.path.dirname(os.path.abspath(__file__))
 
-pd.set_option('display.precision', 4)
 
 def equalize_medians(arr,log10=False):
     if log10:
@@ -83,6 +82,7 @@ def plot_histograms(data=pd.DataFrame,log10=False):
     return fig
 def plot_boxplot(data=pd.DataFrame,log10=True):
     # transform data and set Series name
+    #plt.figure(figsize=(8, 6))
     if log10:
         data = np.log10(data)
         data = data[np.isfinite(data)]
@@ -92,6 +92,50 @@ def plot_boxplot(data=pd.DataFrame,log10=True):
         fig=sns.boxplot(data=data)
         #fig.tick_params(axis='x', labelrotation=45)
         plt.xticks(rotation=45, ha='right',fontsize=10);
+        return fig
+    except Exception as e:
+        return (f"An error occurred: {e}")
+
+def plot_densityplot(data=pd.DataFrame,log10=True):
+    # transform data and set Series name
+    if log10:
+        data = np.log10(data)
+        data = data[np.isfinite(data)]
+    #data = data.iloc[:, :5];
+    #print(data.iloc[:, :5].to_string(index=False))
+
+
+    rows_with_missing = data[data.isnull().any(axis=1)]
+    rows_without_missing = data[~data.isnull().any(axis=1)]
+    try:
+        fig,axes=plt.subplots(1, 2, figsize=(14, 7), sharex=True, sharey=True)
+        # Density plot for rows with missing values
+        i=0
+        for column in rows_with_missing.columns:
+            density=sns.kdeplot(rows_with_missing[column].dropna(), ax=axes[0], label=column)
+
+        x_peak = density.get_lines()[0].get_xdata()[np.argmax(density.get_lines()[0].get_ydata())]
+        y_peak = np.max(density.get_lines()[0].get_ydata())
+        # Add a vertical line at the peak
+        axes[0].axvline(x=x_peak, color='black', linestyle='--', label=f'Peak: {x_peak:.2f}', linewidth=2)
+
+
+        axes[0].set_title('Density Plot for Proteins with Missing Values')
+        axes[0].set_xlabel('Intensity log(2)')
+        axes[0].legend()
+        # Density plot for rows without missing values
+        for column in rows_without_missing.columns:
+            density = sns.kdeplot(rows_without_missing[column], ax=axes[1], label=column)
+
+        x_peak = density.get_lines()[0].get_xdata()[np.argmax(density.get_lines()[0].get_ydata())]
+        y_peak = np.max(density.get_lines()[0].get_ydata())
+        # Add a vertical line at the peak
+        axes[1].axvline(x=x_peak, color='black', linestyle='--', label=f'Peak: {x_peak:.2f}', linewidth=2)
+
+        axes[1].set_title('Density Plot for Proteins without Missing Values')
+        axes[1].set_xlabel('Intensity (log2)')
+        axes[1].legend()
+        
         return fig
     except Exception as e:
         return (f"An error occurred: {e}")
@@ -263,42 +307,79 @@ def plot_sample_correlations(df: pd.DataFrame,
     else:
         raise ValueError
     return fig
-def plot_fc(df: pd.DataFrame,min_fc: float, pat: str , fdr=0.01   ):
+def plot_fc(df: pd.DataFrame,min_fc: float, fdr=0.01   ):
 
     # extract data
-    res =  df[df['Experiments'] == pat]
-    res = res.rename (columns={'Biosequence Name': 'protein'})
-    res.iloc[:, 3:] = res.iloc[:, 3:].astype(float)
+    #df =  df[df['Experiments'] == pat]
+    df = df.rename (columns={'Biosequence Name': 'protein'})
+    df.iloc[:, 3:] = df.iloc[:, 3:].astype(float)
     
-    res.insert(res.shape[1], "square_cutoff",
-               ["non_sig" if abs(fc)<min_fc or qval>fdr else "sig" for fc,qval in zip(res.fc, res.qval)])
+    df.insert(df.shape[1], "square_cutoff",
+               ["non_sig" if abs(fc)<min_fc or qval>fdr else "sig" for fc,qval in zip(df.fc, df.qval)])
     #sd = max([df_in[sc1].std(axis=1).mean(),
     #          df_in[sc2].std(axis=1).mean()])
     #exp_pow = power.tt_ind_solve_power(effect_size=min_fc/sd, alpha=fdr,
     #                                   nobs1=len(sc1))
-    fig = px.scatter(x=res.fc,
-                     y=-np.log10(res['pval'].astype(float)),
-                     color=res.square_cutoff,
-                     template='simple_white', 
-                     render_mode="svg",
-                     hover_name=res.protein,
-                     #labels=dict(x="log2 fold change", y="-log10(p-value)",
-                     #            color="FDR {}, power {}".format(str(fdr), str(np.round(exp_pow, 2)))
-                     #           )
-                     labels=dict(x="log2 fold change", y="-log10(p-value)")
-                    ).update_layout(width=600, height=700, 
-                                    title={'text':f"<b>{pat}</b>",
+    # Extract unique labels
+    labels = df['Experiments'].unique()
+    # Create subplots: the number of rows is the number of unique labels
+    num_subplots = len(labels)
+    num_cols = 3 if num_subplots > 3 else num_subplots
+    num_rows = (num_subplots - 1) // num_cols + 1
+    width = 800 if 400 * num_cols < 800 else 400*num_cols
+    fig = make_subplots(rows=num_rows, cols=num_cols, subplot_titles=labels, shared_xaxes=True, shared_yaxes=True)
+
+    # Generate scatter plots for each labels
+    for i, label in enumerate(labels): 
+        # Split the DataFrame based on labels
+        df_sub = df[df['Experiments'] == label]
+        row = i // num_cols + 1
+        col = i % num_cols + 1 
+        subplot=px.scatter(x=df_sub.fc,
+                y=-np.log10(df_sub['pval'].astype(float)),
+                color=df_sub.square_cutoff,
+                template='simple_white',
+                hover_name=df_sub.protein,
+                #labels=dict(x="log2 fold change", y="-log10(p-value)",
+                #            color="FDR {}, power {}".format(str(fdr), str(np.round(exp_pow, 2)))
+                #           )
+                ).update_layout(title={'text':f"<b>{label}</b>",
                                            'x':0.5,
                                            'xanchor': 'center',
-                                           'y': 0.9,  
+                                           'y': 0.9,
                                            'yanchor': 'top'
                                            },
                                     title_font=dict(size=12),
-                                    margin=dict(l=50, r=50, t=100, b=100))\
-    .add_vline(min_fc, line_width=2).add_vline(-min_fc, line_width=2)\
-    .add_hline(-np.log10(res.loc[res.square_cutoff=="sig", "pval"].max()), line_width=2)
+                                    margin=dict(l=50, r=50, t=100, b=100))
+        for trace in subplot.data:
+            fig.add_trace(trace, row=row, col=col)
 
+        fig.add_vline(min_fc, line_width=1, row=row, col=col)\
+	    .add_vline(-min_fc, line_width=1, row=row, col=col)\
+            .add_hline(-np.log10(df_sub.loc[df_sub.square_cutoff=="sig", "pval"].max()), line_width=1, row=row, col=col)
+
+    fig.update_layout(showlegend=False)
+
+    # Update layout to add titles
+    fig.update_layout(
+	xaxis_title='log2 fold change',
+	yaxis_title='-log10(p-value)',
+        height=600*num_rows,
+        width=width,
+        legend=dict(x=1.05, y=1),
+        showlegend=True 
+    )
+    # Update x-axis title position to the middle of the subplot layout
+    fig.update_xaxes(title_standoff=25)
+
+    #svg_buffer = BytesIO()
+    #fig.write_image(svg_buffer, format='svg')
+    # Get the SVG content from the buffer
+    #svg_content = svg_buffer.getvalue().decode('utf-8')
+
+    #return svg_content
     return fig
+
 def run_ttest(df: pd.DataFrame,
               c1_str: str, c2_str: str,
               cols_ann: list = ["Majority protein IDs", "Gene names", "Annotation"],
@@ -458,7 +539,7 @@ def read_data(file):
 
 def knn_impute(df):
     # Convert data to numpy array for imputation, skipping the first row and first two columns
-    data = df.iloc[1:, 2:]
+    data = df.iloc[1:,2:]
 
     # Replace '' with np.nan
     data = data.replace('', np.nan)
@@ -475,7 +556,8 @@ def knn_impute(df):
     second_column_array = df['Biosequence Gene Name'].to_numpy()
     second_column_array = np.delete(second_column_array, 0, axis=0)
 
-    imputed_data =  np.column_stack((first_column_array , second_column_array , imputed_data))
+    formatted_data = np.round(imputed_data, 4)
+    imputed_data =  np.column_stack((first_column_array , second_column_array , formatted_data))
     return imputed_data
 
 
@@ -528,20 +610,22 @@ def main():
 #    print_svg()	
 #    plt.close()
     if 'impute' not in plot_type:
-
-        print("Content-Type: image/svg+xml")
+        print("Content-Type: image/svg+xml/text/html")
         print()  # Blank line indicating the end of headers
-
 
     if 'impute' in plot_type:
         result = knn_impute(proteins).tolist()
         print(json.dumps(result))
-        
     elif 'box_plot' in plot_type:
         plt.figure();
         fig=plot_boxplot(data,log10=False)
         plt.title('protein intensity (1og2)')
         print_svg('svg_box_plot')
+        plt.close()
+    elif 'density_plot' in plot_type:
+        plt.figure();
+        fig=plot_densityplot(data, log10=False)
+        print_svg('svn_density_plot')
         plt.close()
     elif 'box_plot_norm' in plot_type:
         plt.figure();
@@ -578,10 +662,9 @@ def main():
 #                                            n_perm=10, 
 #                                            plot_fdr_line=False)
 
-        fig_square = plot_fc(proteins, min_fc=1, pat='exp1-exp2', fdr=0.01)
-        fig_square.update_layout(font_size=10, width=400, height=400)
+        fig_square = plot_fc(proteins, min_fc=1, fdr=0.01)
         #svg_bytes = pio.to_image(fig_square, format='svg')
-        #print(svg_bytes.decode())
+        #print (fig_square)
         print_svg_plotly(fig_square)
 
         #result_volc=sort_dataframe_result(result_volc,'fc') 

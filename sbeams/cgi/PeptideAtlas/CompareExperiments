@@ -178,7 +178,7 @@ sub handle_request {
   # Used to return GetProteins instead of GetProteins_beta
 
   #### Set some specific settings for this program
-  my $CATEGORY="Protein Quantification";
+  my $CATEGORY="Label Free Protein Quantification";
   my $TABLE_NAME="AT_CompareExperiments"; 
   my $base_url = "$CGI_BASE_DIR/$SBEAMS_SUBDIR/$PROG_NAME";
 
@@ -290,7 +290,7 @@ sub handle_request {
        $tag =~ s/.*\|//;
        push @sample_tags, $tag;
     }
-    if (scalar @sample_tags > 2){   
+    if (scalar @sample_tags > 5){   
 			$sbeams->reportException(
 				state => 'ERROR',
 				type => 'Too mang experiments',
@@ -571,7 +571,7 @@ sub handle_request {
                                                          rs_params => \%rs_normalized_params);
 
 
-      #### write normalized protein intensity table
+      #### write imputed and fc data table
       if ($msg eq '1'){
 
         my $data_ref = $resultset_postprocessed_ref->{normalized_data}{data_ref};
@@ -796,7 +796,7 @@ sub add_plot_tab {
 		}
 		</style>
 	 <script>
-    var plottabs = ["box_plot","box_plot_norm","cor_heatmap","volc"];
+    var plottabs = ["box_plot","box_plot_norm","cor_heatmap","volc", "density_plot"];
 
 		function generateSVG(evt, plot_id, set_name) {
 			evt.preventDefault();
@@ -856,16 +856,26 @@ sub add_plot_tab {
     <td class='formtabbase'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
 		<td class="formtab" id='box_plot' onclick="generateSVG(event, 'box_plot', '$params->{unfiltered_data}->{set_name}')">
        <a>&nbsp;&nbsp;&nbsp;intensity boxplot&nbsp;&nbsp;&nbsp;</a></td>
+
     <td class='formtabbase'>&nbsp;&nbsp;&nbsp;</td>
     <td class="formtab" id='box_plot_norm' onclick="generateSVG(event, 'box_plot_norm', '$params->{normalized_data}->{set_name}')">
-       <a>&nbsp;&nbsp;&nbsp;normalized intensity boxplot&nbsp;&nbsp;&nbsp;</a></td>
+			<a>&nbsp;&nbsp;&nbsp;normalized intensity boxplot&nbsp;&nbsp;&nbsp;</a></td>
+
+    <td class='formtabbase'>&nbsp;&nbsp;&nbsp;</td>
+    <td class="formtab" id='density_plot' onclick="generateSVG(event,'density_plot', '$params->{normalized_data}->{set_name}')">
+       <a>&nbsp;&nbsp;&nbsp;density plot&nbsp;&nbsp;&nbsp;</a></td>
+
     <td class='formtabbase'>&nbsp;&nbsp;&nbsp;</td>
 		<td class="formtab" id='cor_heatmap' onclick="generateSVG(event,'cor_heatmap', '$params->{normalized_data}->{set_name}')">
        <a>&nbsp;&nbsp;&nbsp;correlation heatmap&nbsp;&nbsp;&nbsp;</a></td>  
+
     <td class='formtabbase'>&nbsp;&nbsp;&nbsp;</td>
 		<td class="formtab" id='volc' onclick="generateSVG(event,'volc', '$params->{fc}->{set_name}')">
        <a>&nbsp;&nbsp;&nbsp;volcano plot&nbsp;&nbsp;&nbsp;</a></td>
+
     <td class='formtabbase' width='800'>&nbsp;&nbsp;&nbsp;</td>
+
+
    </tr>
 	 </TABLE>
 	 </form>
@@ -873,7 +883,7 @@ sub add_plot_tab {
     <div class="tabcontent" id="box_plot_norm_content" width="800" height="600"></div>
 		<div class="tabcontent" id="cor_heatmap_content" width="800" height="600"></div>
 		<div class="tabcontent" id="volc_content" width="800" height="600"></div>
-   
+    <div class="tabcontent" id="density_plot_content" width="800" height="600"></div> 
 	~;
 
 
@@ -1239,6 +1249,7 @@ sub data_imputation {
   if($parameters{missing_value_imputation_contraint} == 1){
 		my $output = `$python_executable $python_script impute $set_name`;
 		# Decode the JSON output from Python script
+		#print "$python_executable $python_script impute $set_name<BR>";
 		$imputed_data = decode_json($output);
   }
   $resultset_postprocessed_ref->{imputed_data}{data_ref} = $imputed_data;
