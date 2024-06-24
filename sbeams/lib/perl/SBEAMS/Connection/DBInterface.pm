@@ -2856,7 +2856,7 @@ sub displayResultSet {
     my $cytoscape = $args{'cytoscape'} || undef;
 		my $tab_label = $args{'tab_label'} || 'Resultset';
     my $table_id = $args{'table_id'} || 'TBL';
-
+    my $sortable = $args{'sortable'} || 0;
     # Improved formatting capacity, DSC 2005-08-09
     my $no_escape = $args{no_escape} || 0;
     my $nowrap = ( $args{nowrap} ) ? ' NOWRAP' : '';
@@ -2868,9 +2868,6 @@ sub displayResultSet {
       $resort_url="$base_url${separator}apply_action=VIEWRESULTSET&".
           "rs_set_name=$rs_params_ref->{set_name}";
     }
-
-
-
 
     #### Set the display window of rows
     my $page_size = $rs_params_ref->{'page_size'} || 100;
@@ -3286,7 +3283,10 @@ sub displayResultSet {
     } # end if cytoscape format
 
     my $table_class;
-    if($args{sortable} and $base_url eq ''){$table_class = 'CLASS="sortable"' ;}
+    if($args{sortable} and $base_url eq ''){
+        $table_class = 'CLASS="sortable"' ;
+        print "<SCRIPT LANGUAGE=javascript SRC='$HTML_BASE_DIR/usr/javascript/sorttable.js'></SCRIPT>";
+    }
 
     #### If a printable table was desired, use one format
     if ( $printable_table ) {
@@ -3302,7 +3302,7 @@ sub displayResultSet {
         hidden_cols=>$hidden_cols_ref,
         THformats=>["BGCOLOR=".$row_color_scheme_ref->{header_background} . $nowrap],
         TDformats=>['NOWRAP'],
-        no_escape => $no_escape
+        no_escape => $no_escape,
       };
 
     #### Otherwise, use the standard viewable format which doesn't print well
@@ -3345,7 +3345,9 @@ sub displayResultSet {
           base_url=>$base_url,
 # no         image_dir=>"$HTML_BASE_DIR/images",
           resort_url=>$resort_url,
-          no_escape => $no_escape
+          no_escape => $no_escape,
+          sortable => $sortable,
+          table_id => $table_id 
         };
       }
 

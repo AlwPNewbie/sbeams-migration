@@ -25,10 +25,12 @@ function ts_makeSortable(table) {
     for (var i=0;i<firstRow.cells.length;i++) {
         var cell = firstRow.cells[i];
         var txt = ts_getInnerText(cell);
-        cell.innerHTML = '<a href="#" class="sortheader" '+ 
-        'TITLE="Click column heading to sort"' +
-        'onclick="ts_resortTable(this, '+i+');return false;">' + 
-        txt+'<span class="sortarrow">&nbsp;&nbsp;&nbsp;</span></a>';
+        if (cell.innerHTML.indexOf ('resortTable')== -1){
+					cell.innerHTML = '<a href="#" class="sortheader" '+ 
+					'TITLE="Click column heading to sort"' +
+					'onclick="ts_resortTable(this, '+i+');return false;">' + 
+					txt+'<span class="sortarrow">&nbsp;&nbsp;&nbsp;</span></a>';
+        }
   }
 }
 
@@ -192,4 +194,37 @@ function addEvent(elm, evType, fn, useCapture)
   } else {
     alert("Handler could not be removed");
   }
+}
+
+function resortTable(lnk,clid,tableid) {
+   var currentPage = $('#compact-pagination_' + tableid).pagination('getCurrentPage');
+	 var hrefTextPrefix = 'https://db.systemsbiology.net/devZS/sbeams/cgi/PeptideAtlas/ReadQueryResult.cgi?';
+   var rs_page_number = currentPage.rs_page_number;
+	 var itemsOnPage = currentPage.itemsOnPage;
+	 var rs_set_name = currentPage.rs_set_name;
+    // Get the span element containing the sort arrow
+   var span;
+   for (var ci = 0; ci < lnk.childNodes.length; ci++) {
+      if (lnk.childNodes[ci].tagName && lnk.childNodes[ci].tagName.toLowerCase() == 'span') {
+          span = lnk.childNodes[ci];
+       }
+   }
+   var column = clid || td.cellIndex;
+
+   // Get the current arrow direction
+   var currentDirection = span.getAttribute('sortdir') || 'up';
+   var newDirection = currentDirection === 'up' ? 'down' : 'up';
+
+	 var href = hrefTextPrefix + 'rs_page=' + rs_page_number + '&rs_page_size=' + itemsOnPage +'&rs_set_name=' + rs_set_name + '&table_id=' + tableid + '&sortdir=' + newDirection + '&sortidx=' + column;
+
+	 $('#compact-pagination_' + tableid).pagination('selectPage', rs_page_number, href);
+   if (newDirection === 'down') {
+      ARROW = '&nbsp;&#9663;';
+      span.setAttribute('sortdir', 'down');
+   } else {
+      ARROW = '&nbsp;&#9653;';
+      span.setAttribute('sortdir', 'up');
+   }
+   span.innerHTML = ARROW;
+
 } 

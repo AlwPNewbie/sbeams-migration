@@ -181,7 +181,6 @@ sub handle_request {
   my $CATEGORY="Label Free Protein Quantification";
   my $TABLE_NAME="AT_CompareExperiments"; 
   my $base_url = "$CGI_BASE_DIR/$SBEAMS_SUBDIR/$PROG_NAME";
-
   #### Get the columns and input types for this table/query
   my @columns = $sbeamsMOD->returnTableInfo($TABLE_NAME,"ordered_columns");
   my %input_types = $sbeamsMOD->returnTableInfo($TABLE_NAME,"input_types");
@@ -629,7 +628,7 @@ sub handle_request {
 				use_tabbed_panes => 1,
 				column_titles_ref=>\@column_titles,
 				column_help=>$obs_help,
-				base_url=>$base_url,
+			  sortable => 1	
 			);
 
 			#### Display the resultset controls
@@ -661,7 +660,7 @@ sub handle_request {
           use_tabbed_panes => 1,
           nowrap => [1],
           column_titles_ref=>$resultset_ref->{column_titles_ref},
-          base_url=>$base_url,
+          sortable => 1, 
           tab_label => $tab_labels[0],
         );
         #### Display the resultset controls
@@ -684,7 +683,7 @@ sub handle_request {
 					use_tabbed_panes => 1,
 					nowrap => [1],
 					column_titles_ref=>$resultset_exp_ref->{column_titles_ref},
-					base_url=>$base_url,
+				  sortable => 1,	
 					table_id =>  "TBL_$idx",
 					tab_label => $tab_labels[$idx],
 				);
@@ -748,7 +747,7 @@ sub handle_request {
 						use_tabbed_panes => 1,
 						nowrap => [1],
 						column_titles_ref=>$ref->{column_titles_ref},
-						base_url=>$base_url,
+					  sortable => 1,	
 						table_id =>  "TBL_$idx",
 						tab_label => $tab_labels[$idx],
 					);
