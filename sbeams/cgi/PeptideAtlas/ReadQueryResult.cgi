@@ -142,6 +142,8 @@ sub handle_request {
 #  my $msg = "empirical CE is $parameters{empirical_ce}<BR>\n";
   my $rs_page_number = $parameters{rs_page} || 1; 
   my $rs_page_size = $parameters{rs_page_size} || 50;
+  my $sortdir = $parameters{sortdir} || '';
+  my $sortidx = $parameters{sortidx} || '0';
 
   #### verify that needed parameters were passed
   unless ($parameters{rs_set_name}) {
@@ -187,15 +189,39 @@ sub handle_request {
 
 		my $start_idx = ($rs_page_number -1) * $rs_page_size;
 		my $end_idx = $start_idx + $rs_page_size;
-		my @data =();
 
-		for(my $i=0; $i< scalar @{$resultset_ref->{data_ref}}; $i++){
+		my @data =();
+    my @sorted_result_data =();
+    my @resultset_data = @{$resultset_ref->{data_ref}};
+    my $n_columns = scalar @{$resultset_ref->{data_ref}};
+    if ($sortidx ne '' && $sortdir ne ''){
+			# Determine if the first element is a number or string
+			my $first_elem = $resultset_ref->{data_ref}->[0]->[$sortidx];
+		  my $is_numeric = ($first_elem =~ /^[\d\.Ee]+$/) ? 1 : 0;
+      if ($is_numeric){
+         if ($sortdir eq 'up'){
+            @sorted_result_data = sort { $a->[$sortidx] <=> $b->[$sortidx] } @{$resultset_ref->{data_ref}};
+         }else{
+            @sorted_result_data = sort { $b->[$sortidx] <=> $a->[$sortidx] } @{$resultset_ref->{data_ref}};
+         }
+      }else{
+				 if ($sortdir eq 'up'){
+						@sorted_result_data = sort { $a->[$sortidx] cmp $b->[$sortidx] } @{$resultset_ref->{data_ref}};
+				 }else{
+						@sorted_result_data = sort { $b->[$sortidx] cmp $a->[$sortidx] } @{$resultset_ref->{data_ref}};
+				 }
+       }
+    }else{
+       @sorted_result_data = @{$resultset_ref->{data_ref}};
+    }
+ 
+		for(my $i=0; $i< $n_columns; $i++){
 		  if ($i >= $start_idx &&  $i<$end_idx){
 			 	if (%column_title_hash){
 					 my @values = (); 
 					 ## order values according to column idx;
 					 foreach my $col(@$column_titles_ref){
-              my $val = $resultset_ref->{data_ref}->[$i]->[$column_title_hash{$col}];
+              my $val = $sorted_result_data[$i]->[$column_title_hash{$col}];
               if ($url_cols_ref->{$col}){
                  my $url = "https://db.systemsbiology.net$url_cols_ref->{$col}";
                  $url =~ s/%0V/$val/;
@@ -205,7 +231,7 @@ sub handle_request {
 					 }
 					 push @data, \@values;
 				}else{
-					 push @data, $resultset_ref->{data_ref}[$i];
+					 push @data, $sorted_result_data[$i]; 
 				}
 		  }
        
