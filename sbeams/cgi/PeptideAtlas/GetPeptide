@@ -1820,7 +1820,6 @@ sub postProcessResultset {
   #my $ptm_norm_info_gain_idx = $cols->{ptm_norm_info_gain};
 	my @display_peps;
 	my $at_least_one_chromatogram = 0;
-	my $at_least_one_chimera =0;
   my $has_header_info = 0;
   my $has_ptm_score = 0;
   my $n_rows = scalar(@{$resultset_ref->{data_ref}});
@@ -1845,7 +1844,6 @@ sub postProcessResultset {
     my @ptm_scores = ();
 		my %trace;
 		my $chromatogram_entry = '';  #empty, unless we can find chromgram info
-		$at_least_one_chimera++ if ($pep->[$chimera_idx]);
 		#### If this is a QTRAP 5500 mzML file, get info from special
 		#### table, QT5500_TRANSITION_GROUP.
 		#### This table needs to be updated each time the Human SRMAtlas is rebuilt.
@@ -1927,6 +1925,7 @@ sub postProcessResultset {
 		my $eval_string = $query_parameters_ref->{'ann'}? 'eval=1&' : '' ;
     my $modpep_query_string = $pep->[$mseq_idx];
     $modpep_query_string =~ s/\+/%2B/g;
+		$pep->[$chimera_idx] = 1 if (!$pep->[$chimera_idx]);
  
 		$pep->[$spec_idx] = qq~<A HREF="$CGI_BASE_DIR/PeptideAtlas/ShowObservedSpectrum?${eval_string}atlas_build_id=$build_id&spectrum_identification_id=$pep->[$spec_idx]&peptide=$modpep_query_string&assumed_charge=$pep->[$chrg_idx]&chimera_level=$pep->[$chimera_idx]&sample_id=$pep->[$smpl_idx]&spectrum_name=$pep->[$name_idx]" TARGET=blank>$img</A>~;
 		$pep->[$ann_idx] = sprintf("%0.2f", $pep->[$ann_idx]);
@@ -1935,7 +1934,6 @@ sub postProcessResultset {
 		$pep->[$ann_idx] .= "($pep->[$ann_count_idx])";
 		$pep->[$ann_idx] = $none if (!$pep->[$ann_count_idx]);
 		$pep->[$chrm_idx] = $chromatogram_entry;
-		$pep->[$chimera_idx] = '' if (!$pep->[$chimera_idx]);
 		my $modified_pepseq = $pep->[$mseq_idx];
 		$pep->[$mseq_idx] =   $sbeamsMOD->formatMassMods($pep->[$mseq_idx]);
 
@@ -2055,7 +2053,6 @@ sub postProcessResultset {
   if ($has_ptm_score){
     #sort_ptm_peps($ptm_peps_ref);
   }
-  $hidden_cols->{"chimera_level"} = 1 if (! $at_least_one_chimera) ; 
   $hidden_cols->{"chromatogram"} = 1 if ( ! $at_least_one_chromatogram);
   if ( ! $has_header_info){
     #$hidden_cols->{'precursor_intensity'} = 1;
