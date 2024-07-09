@@ -1568,15 +1568,15 @@ sub getPTMTableDisplay {
                   "atlas_build_id=$atlas_build_id&site=$site&biosequence_name=$prot".
                   "&ptm_type=$ptm_type&residue=$residue&apply_action=QUERY";
 
-        #my @columns = ('Residue','nObs', 'One_mod', 'Two_mods', 'Over_two_mods',
+        #my @columns = ('Residue','FLR Category', 'nObs', 'One_mod', 'Two_mods', 'Over_two_mods',
         #         'nP<.01', 'nP<.05', 'nP<.20', 'nP.2-.8', 'nP>.80', 'nP>.95', 'nP>.99',
         #                  'no-choice','enriched-with-mod','enriched-but-non-mod','non-enriched',
         #                           'InNextProt','InUniprot','peptide');
-				if ($vals->[1] > 0 || $vals->[16] eq 'yes' || $vals->[17] eq 'yes'){
+				if ($vals->[2] > 0 || $vals->[17] eq 'yes' || $vals->[18] eq 'yes'){
 					my $start_in_biosequence = $pos + 1;
 					my $link = "$CGI_BASE_DIR/PeptideAtlas/GetPeptide?".
 										 "atlas_build_id=$atlas_build_id&searchWithinThis=Peptide+Sequence&searchForThis=".
-										 "$vals->[18]&apply_action=QUERY"; 
+										 "$vals->[19]&apply_action=QUERY"; 
 					$vals->[0] = $self->make_pa_tooltip( tip_text => "Get most observed peptide sequence covering this site",
 																								link_text => "<a href='$link' target='_blank'>$vals->[0]</a>" );
 				}
@@ -1586,24 +1586,24 @@ sub getPTMTableDisplay {
 					}
           ## make links for nP>.95 and nP>.99 ids 
           my $link = $url; 
-          if ($vals->[9] > 0){
-            $link = $url ."&min=0.80&max=0.95";
-            $vals->[9] = $self->make_pa_tooltip( tip_text => "Get observed spectra covering this site with ptm scores within 0.80-0.95",
-                                                 link_text => "<a href='$link' target='_blank'>$vals->[9]</a>" );
-          }
           if ($vals->[10] > 0){
-            $link =$url ."&min=0.95&max=0.99";
-            $vals->[10] = $self->make_pa_tooltip( tip_text => "Get observed spectra covering this site with ptm scores within 0.95-0.99",
+            $link = $url ."&min=0.80&max=0.95";
+            $vals->[10] = $self->make_pa_tooltip( tip_text => "Get observed spectra covering this site with ptm scores within 0.80-0.95",
                                                  link_text => "<a href='$link' target='_blank'>$vals->[10]</a>" );
           }
           if ($vals->[11] > 0){
-            $link = $url ."&min=0.99";
-            $vals->[11] = $self->make_pa_tooltip( tip_text => "Get observed spectra covering this site with ptm scores within 0.99-1.0",
+            $link =$url ."&min=0.95&max=0.99";
+            $vals->[11] = $self->make_pa_tooltip( tip_text => "Get observed spectra covering this site with ptm scores within 0.95-0.99",
                                                  link_text => "<a href='$link' target='_blank'>$vals->[11]</a>" );
           }
           if ($vals->[12] > 0){
+            $link = $url ."&min=0.99";
+            $vals->[12] = $self->make_pa_tooltip( tip_text => "Get observed spectra covering this site with ptm scores within 0.99-1.0",
+                                                 link_text => "<a href='$link' target='_blank'>$vals->[12]</a>" );
+          }
+          if ($vals->[13] > 0){
             $link = $url ."&nochoice=1";
-            $vals->[12] = $self->make_pa_tooltip( tip_text => "Get observed spectra covering this site that have no choice in the localization of the PTM ", link_text => "<a href='$link' target='_blank'>$vals->[12]</a>" );
+            $vals->[13] = $self->make_pa_tooltip( tip_text => "Get observed spectra covering this site that have no choice in the localization of the PTM ", link_text => "<a href='$link' target='_blank'>$vals->[13]</a>" );
           }
           push@row, $vals->[$i]; 
 			  }	
