@@ -3609,6 +3609,7 @@ sub displayResultSetControls {
     #### Print out a form to control some variable parameters
     my $this_page = $rs_params{page_number} + 1;
     $base_url =~ /.*TABLE_NAME=(\S+)$/;
+
     my $table_name = $1;
 
     print qq~
@@ -3647,6 +3648,7 @@ sub displayResultSetControls {
 							cssStyle: 'light-theme',
               rs_page_number: rs_page_number,
               table_id: '$table_id',
+              table_name: '$table_name',
 							rs_set_name: "$rs_params{set_name}",
 					});
 			  });
