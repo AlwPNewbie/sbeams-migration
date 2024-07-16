@@ -658,6 +658,10 @@ Counts only primary reference proteome entries, so final tally may be smaller th
       'tval' => 'The t-value for a Student\'s t-test',
       'pval' => 'the two-tail p-value',
       'qval' => 'adjusted p-value, Benjamini-Hochberg (BH) method',
+
+      ## Mass Modifications
+      'Modification' => 'PSI-MS name',
+      'Percent Identified Spectra' => 'The percentage of identified spectra in the build that contain this modification.'
   );
 
   if ( $args{labels} ) {

@@ -43,7 +43,14 @@ $fh->autoflush;
 
 ##Build Overview
 print "getting build_overview table\n";
-get_build_overview ($fh, $build_id, $build_path );
+
+my %mass_modifications = ();
+my $n_identified_spectra=0;
+get_build_overview (fh=>$fh, 
+                    build_id=>$build_id, 
+                    build_path=>$build_path,
+                    mass_modifications=>\%mass_modifications,
+                    n_identified_spectra => \$n_identified_spectra );
 
 print "getting what_is_new table\n";
 my ($what_is_new, $new_sample_ids) = $atlas->get_what_is_new($build_id, 1);
@@ -124,6 +131,13 @@ print "getting Dataset Specific Protein Identification\n";
 my $dataset_spec_protein_info =  get_dataset_spec_protein_info( build_id => $build_id);
 foreach my $row (@$dataset_spec_protein_info){
   print $fh "dataset_spec_protein_info|".  join("\t", @$row) ."\n";
+}
+
+print $fh "mass_modifications|Modification\tN Obs\tPercent Identified Spectra\n";
+
+foreach my $mod (sort {$mass_modifications{mod}{$b} <=> $mass_modifications{mod}{$a}} keys %{$mass_modifications{mod}}){
+  print $fh "mass_modifications|$mod\t". add_thousand_separator($mass_modifications{mod}{$mod}); 
+  print $fh sprintf("\t%.2f\n", $mass_modifications{mod}{$mod}*100/$n_identified_spectra);
 }
 
 if ($organism =~ /Bburgdorferi/i){
@@ -357,9 +371,15 @@ sub get_build_plots {
 
 # General build info, date, name, organism, specialty, default
 sub get_build_overview {
-  my $fh = shift;
-  my $build_id = shift;
-  my $build_path = shift;
+  my %args = @_;
+  my $fh = $args{fh};
+  my $build_id = $args{build_id};
+  my $build_path = $args{build_path};
+  my $mass_modifications = $args{mass_modifications};
+  my $n_identified_spectra = $args{n_identified_spectra};
+
+  print "build_id=$build_id\nbuild_path=$build_path\n";
+
  
   my $build_info = $sbeams->selectrow_hashref( <<"  BUILD" );
   SELECT atlas_build_name, probability_threshold, atlas_build_description, 
@@ -384,22 +404,52 @@ sub get_build_overview {
 #  for my $k ( keys( %$build_info ) ) { print STDERR "$k => $build_info->{$k}\n"; }
   my $build_name = $build_info->{atlas_build_name};
   my $phospho_info;
-  if ($build_name =~ /phospho/i){
-		my $sql = qq~
-			 SELECT distinct mp.modified_peptide_sequence
-			 FROM $TBAT_PEPTIDE_INSTANCE PI
-			 JOIN $TBAT_MODIFIED_PEPTIDE_INSTANCE MP ON (PI.PEPTIDE_INSTANCE_ID = MP.PEPTIDE_INSTANCE_ID)
-			 JOIN $TBAT_PEPTIDE_MAPPING PM ON (PI.PEPTIDE_INSTANCE_ID = PM.PEPTIDE_INSTANCE_ID)
-			 JOIN $TBAT_BIOSEQUENCE B ON (B.BIOSEQUENCE_ID = PM.MATCHED_BIOSEQUENCE_ID)
-			 AND PI.ATLAS_BUILD_ID = $build_id
-       AND B.BIOSEQUENCE_NAME NOT LIKE 'CONTAM%' 
-       AND B.BIOSEQUENCE_NAME NOT LIKE 'DECOY%'
-		 ~;
+  
+  my %processed_id = ();
 
-		 my @rows = $sbeams->selectSeveralColumns($sql);
+	my $sql = qq~
+		 SELECT mp.modified_peptide_instance_id,  mp.modified_peptide_sequence, mp.n_observations
+		 FROM $TBAT_PEPTIDE_INSTANCE PI
+		 JOIN $TBAT_MODIFIED_PEPTIDE_INSTANCE MP ON (PI.PEPTIDE_INSTANCE_ID = MP.PEPTIDE_INSTANCE_ID)
+		 JOIN $TBAT_PEPTIDE_MAPPING PM ON (PI.PEPTIDE_INSTANCE_ID = PM.PEPTIDE_INSTANCE_ID)
+		 JOIN $TBAT_BIOSEQUENCE B ON (B.BIOSEQUENCE_ID = PM.MATCHED_BIOSEQUENCE_ID)
+		 AND PI.ATLAS_BUILD_ID = $build_id
+		 AND B.BIOSEQUENCE_NAME NOT LIKE 'CONTAM%' 
+		 AND B.BIOSEQUENCE_NAME NOT LIKE 'DECOY%'
+	 ~;
+
+	my @rows = $sbeams->selectSeveralColumns($sql);
+  
+  foreach my $row(@rows){
+     my ($id, $mod_pep, $n_obs) = @$row;
+     next if ($processed_id{$id});  
+     $processed_id{$id} =1;
+     $mass_modifications->{seq}{$mod_pep} =1;
+     my %mods = ();
+
+
+		 if ($mod_pep =~ /^(\[[^\[\]]*(?:\[[^\[\]]*\][^\[\]]*)*\])\-(.*)/){
+	 		 $mod_pep = "n$1$2";
+		 }
+		 if ($mod_pep =~ /(.*)\-(\[[^\[\]]*(?:\[[^\[\]]*\][^\[\]]*)*\])$/){
+	  	 $mod_pep = "$1c$2";
+		 }
+
+     
+     while ($mod_pep =~ /([ncA-Z](?:\[[^\[\]]*(?:\[[^\[\]]*\][^\[\]]*)*\])?)/g){
+        my $part = $1;
+        if ($part =~ /\[(.*)\]/){
+           $mods{$part}=$n_obs;
+        }
+     }  
+     foreach my $mod (keys %mods){
+       $mass_modifications->{mod}{$mod} +=$mods{$mod};
+     }
+  } 
+
+  if ($build_name =~ /phospho/i){
 		 my %result =();
-		 foreach my $row(@rows){
-			 my ($mod_pep) = @$row;
+		 foreach my $mod_pep (keys %{$mass_modifications->{seq}}){ 
 			 $mod_pep =~ s/([^ASTY])\[\d+\]/$1/g;
 			 $mod_pep =~ s/[nc]//g;
        my @m = $mod_pep =~ /[ASTY]\[/g;
@@ -415,12 +465,6 @@ sub get_build_overview {
 			 $phospho_info->{$type} = scalar keys %{$result{$type}};
 		 }
   }
-
-#  my $pep_count = $sbeams->selectrow_hashref( <<"  PEP" );
-#  SELECT COUNT(*) cnt,  SUM(n_observations) obs
-#  FROM $TBAT_PEPTIDE_INSTANCE 
-#  WHERE atlas_build_id = $build_id 
-#  PEP
 
   my $pep_count = $sbeams->selectrow_hashref( <<"  PEP" );
   SELECT COUNT(*) cnt,  SUM(n_observations) obs
@@ -443,6 +487,8 @@ sub get_build_overview {
     WHERE  PI.ATLAS_BUILD_ID= $build_id AND B.BIOSEQUENCE_NAME NOT LIKE 'DECOY%'
           AND B.BIOSEQUENCE_NAME NOT LIKE 'CONTAM%' 
   PEP
+
+  $$n_identified_spectra = $pep_count->{obs};
 
   my ($pep_count_respect,$mod_pep_count_respect);
   if ($OPTIONS{respect}){
@@ -542,7 +588,7 @@ sub get_build_overview {
   }
 
   $build_info->{build_date} =~ s/^([0-9-]+).*$/$1/;
-  
+ 
   print $fh "build_overview|atlas_build_name\t$build_info->{atlas_build_name}\n";
   print $fh "build_overview|atlas_build_description\t$build_info->{atlas_build_description}\n";
   print $fh "build_overview|set_name\t$build_info->{set_name}\n";
@@ -615,6 +661,7 @@ sub get_sample_info {
       ["date_created", "CONVERT(VARCHAR(10), PE.date_created, 126)", "Date Added"],
       ["pubmed_id", "CONVERT(VARCHAR(20), pubmed_id)", "Pubmed Id or DOI"], 
       ["instrument_name","instrument_name","Instrument Name"],
+      ["protease", "C.name", "Protease"],    
       ["sample_category", "SC.name", "Sample Category"],
       ["sample_category_id", "S.sample_category_id", "sample_category_id"]
     );
@@ -648,7 +695,8 @@ sub get_sample_info {
   ) AS A ON (A.SAMPLE_ID = S.SAMPLE_ID) 
   JOIN PROTEOMICS.DBO.SEARCH_BATCH PSB  ON (PSB.SEARCH_BATCH_ID = ASB.PROTEOMICS_SEARCH_BATCH_ID)
   JOIN PROTEOMICS.DBO.PROTEOMICS_EXPERIMENT PE ON (PE.EXPERIMENT_ID = PSB.EXPERIMENT_ID)
-  LEFT JOIN PROTEOMICS.DBO.INSTRUMENT I ON (I.INSTRUMENT_ID = PE.INSTRUMENT_ID) 
+  LEFT JOIN PROTEOMICS.DBO.INSTRUMENT I ON (I.INSTRUMENT_ID = PE.INSTRUMENT_ID)
+  LEFT JOIN $TBAT_PROTEASES C ON (S.PROTEASE_ID = C.ID) 
   WHERE ABSB.atlas_build_id = $build_id
   AND ASB.record_status != 'D'
   AND ABSB.record_status != 'D'
@@ -1068,4 +1116,19 @@ sub get_build_path {
   my $path = $atlas->getAtlasBuildDirectory( atlas_build_id => $args{build_id} );
   $path =~ s/DATA_FILES//;
   return $path;
+}
+
+sub add_thousand_separator {
+ my $num = shift;
+ my $formated_num = $num;
+ if ($num =~ /^\d+$/){
+		while ($num =~ s/^(-?\d+)(\d{3}(?:,\d{3})*(?:\.\d+)*)$/$1,$2/){};
+		$formated_num = $num;
+ }elsif($num =~ /^(\d+)\s([\(\)\d\.\%]+)$/){
+		 $num = $1;
+		 my $pect = $2;
+		 while ($num =~ s/^(-?\d+)(\d{3}(?:,\d{3})*(?:\.\d+)*)$/$1,$2/){};
+		 $formated_num = "$num $pect";
+	}
+  return $formated_num;
 }

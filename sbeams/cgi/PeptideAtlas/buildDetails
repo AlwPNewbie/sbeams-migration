@@ -1448,6 +1448,7 @@ sub generate_html_from_file {
    dataset_spec_protein_info => 'Dataset Specific Protein Identification',
    proteome_coverage => 'Proteome Coverage (exhaustive)',
    ptm_coverage => 'PTM Coverage',
+   mass_modifications => 'Mass Modifications', 
  );
  my %column_align = (
    exp_contrib_table => [qw(left left left center center center center center center center center center center center center center)], 
@@ -1456,6 +1457,7 @@ sub generate_html_from_file {
    dataset_spec_protein_info => [qw(left center center center center center center center center)], 
    proteome_coverage => [qw(left center center center center center)],
    ptm_coverage =>  [qw(left)],
+   mass_modifications => [qw(left center center)],
  );
   my $sql =qq~;
     SELECT LEVEL_NAME AS NAME, PROTEIN_PRESENCE_LEVEL_ID AS ID
@@ -1517,17 +1519,17 @@ sub generate_html_from_file {
     if($line =~ /what_is_new/){
       @data =();
       while ($line =~ /^what_is_new/ && $line !~/sample_ids/){
-	chomp $line;
-	$line =~ s/what_is_new\|//;
-	my @values = split (/\t/, $line, -1);
-	push @data , \@values;
-	$line =<IN>;
+				chomp $line;
+				$line =~ s/what_is_new\|//;
+				my @values = split (/\t/, $line, -1);
+				push @data , \@values;
+				$line =<IN>;
       }
       $html = '<table>';
       $html .= $atlas->encodeSectionHeader(
-	LMTABS => 1,
-	no_toggle => 1,
-	text => "What&#39s New"); 
+																						LMTABS => 1,
+																						no_toggle => 1,
+																						text => "What&#39s New"); 
       $html .= $atlas->encodeSectionTable( rows => \@data,
 					   header => 1,
 					   table_id => 'what_is_new',
@@ -1551,8 +1553,8 @@ sub generate_html_from_file {
 					     visible => 1,
 					     content => "<table>$html</table>" );
 
-	print $html;
-	$html ='';
+				print $html;
+				$html ='';
       }
       @data =();
       next;
@@ -1564,151 +1566,162 @@ sub generate_html_from_file {
     if ($table ne $pre_table && ($pre_table ne '' && ! 
 				 ($table =~ /ptm_coverage/ && $pre_table =~ /ptm_coverage/))){ 
       if ($pre_table eq 'chr_plot'){
-	@$chr_plot_data = @data;
+				@$chr_plot_data = @data;
       }else{
-	my $headings = shift @data if ($pre_table !~ /ptm_coverage/);
-	my $download_table = 0;
-	my @noWrap = (1);
+				my $headings = shift @data if ($pre_table !~ /ptm_coverage/);
+				my $download_table = 0;
+				my @noWrap = (1);
 
-	@noWrap = (3,17,19,20) if ($pre_table eq 'exp_contrib_table');
-	my $table_width = 800;
-	if ($pre_table eq 'proteome_coverage'){
-	  ## remove last column
-	  $table_width = 400;
-	  my $missing_prot_url = "$CGI_BASE_DIR/PeptideAtlas/GetCoreProteomeMapping?action=QUERY".
-	      "apply_action=QUERY";
-	  #'&action=QUERY&proteome_component=';
-	  if (scalar @$headings >= 6){
-	    ## has description column
-	    $table_width = 1000 if (scalar @$headings == 7);
+				@noWrap = (3,17,19,20) if ($pre_table eq 'exp_contrib_table');
+				my $table_width = 800;
+				if ($pre_table eq 'proteome_coverage'){
+					## remove last column
+					$table_width = 400;
+					my $missing_prot_url = "$CGI_BASE_DIR/PeptideAtlas/GetCoreProteomeMapping?action=QUERY".
+							"apply_action=QUERY";
+					#'&action=QUERY&proteome_component=';
+					if (scalar @$headings >= 6){
+						## has description column
+						$table_width = 1000 if (scalar @$headings == 7);
 
-	    $headings->[0] =~s/^\|//;
-	    foreach my $row (@data){
-	      my @elms = split(/\|/, $row->[0]);
-	      $row->[0] = $elms[1]; 
-	      my $mapping_id = $elms[0];
-	      my $uniprot_name_contraint = '';
-	      if ($row->[0] =~ /Core/i){
-		$uniprot_name_contraint = '&uniprot_name_constraint=%5BA-Z%5D%25';
-	      }
-	      ## add link to col5
-	      if ($mapping_id =~ /^\d+$/){						
-		$row->[5] = "<a href='$missing_prot_url$2&mapping_id=$mapping_id&atlas_build_id=$build_id".
-		    "&peptideatlas_category_constraint=15&redundancy_constraint=on&".
-		    "$uniprot_name_contraint' ".
-		    "target='_blank' title='get missing proteins'>$row->[5]</a>" if ($row->[5] > 0);
-	      }
-	      $row->[4] .= '%';
-	    }
-	  }
-	}
-	add_url (table_id => $pre_table,
-		 data_ref=>\@data,
-		 column_name_ref => $headings,
-		 build_id => $build_id,
-		 align => $column_align{$pre_table},
-	    ) if ($pre_table !~ /ptm_coverage/);
-	
-	if ($pre_table eq 'exp_contrib_table'){
-	  if ($headings->[1] eq 'Experiment Annotation'){
-	    $anno=1;
-	  }
-	  @sample_array =  map { [@$_] } @data;
-	  @column_names = @$headings;
-	  ## remove category id column 
-	  my $n = $#column_names;
-	  if ($column_names[$n] eq 'sample_category_id'){
-	    foreach my $row (@data){ 
-	      splice @$row, $n;
-	    }
-	    splice @$headings, $n;
-	  }
-	  $download_table =1;
-	}
-
-	my %ptm_plot_data =();
-	my %ptm_table_headings = ();
-	my %ptm_table_data = ();
-	if ($pre_table =~ /ptm_coverage/){
-	  my $counter = 0;
-	  my %colnames = ();
-	  my %col2residue = ();
-	  my $residue = '';
-	  my ($proteome, $ptm_type,);
-	  foreach my $row (@data){
-	    my $ptm_summary_url = "$CGI_BASE_DIR/PeptideAtlas/GetPTMSummary?atlas_build_id=$build_id".
-	      "&display_options=proteinView&action=QUERY".
-	      "&redundancy_constraint=on&proteome_component=";
-	    if ($row->[0] =~ /Database/){
-	      $row->[0] =~ /.*ptm_coverage_([^\|]+)\|(.*)/;
-	      $ptm_type = $1;
-	      $row->[0] =~ s/.*\|//;
-	      push @{$ptm_table_headings{$ptm_type}}, $row;
-	      for (my $i=1; $i < @$row; $i++){
-					if ($row->[$i] =~ /^total_(\w)_.*$/){
-						$residue = $1;
-					}
-					my $colname = $row->[$i];
-					$colname =~ s/_\w_sites/_sites/;
-					$colnames{$ptm_type}{$i} = $colname;
-					$col2residue{$ptm_type}{$i} = $residue;
-	      } 
-	      next;
-	    }
-	    push @{$ptm_table_data{$ptm_type}}, $row;
-
-	    $row->[0] =~ /^ptm_coverage_([^\|]+)\|([^\|]+).*/;
-	    $proteome = $2;
-	    $ptm_type = $1;
-	    ## add link to col1
-	    if ($row->[0]=~ /^ptm_coverage_[^\|]+\|([^\|]+)\|(.*)$/){
-        $ptm_summary_url = "$ptm_summary_url$2";
-	      $row->[0] = "<a href='$ptm_summary_url\&ptm_type=$ptm_type' target='_blank' title='get ptm protein list'>$1</a>";
-	    }else{
-	      $row->[0] = $proteome;
-	    }
-	    if ($proteome =~ /(core|^Araport11$|^NeXtProt$)/i && ! $ptm_plot_data{$ptm_type}{data} ){
-        my %probability_constraint =  ('nP.80-.95' => 1,
-                                       'nP.95-.99' => 2,
-                                       'nP.99-1' => 3,
-                                       'no-choice' => 4);
-	      foreach my $i(1..scalar @$row -1){ 
-					my $val =  $row->[$i];
-					$val =~ s/\s.*//;
-					$val =~ s/,//g;
-          my $url = '<a href="' . $ptm_summary_url . 
-                    "&ptm_type=$ptm_type&probability_constraint=$probability_constraint{$colnames{$ptm_type}{$i}}\">";
-          $url =~ s/proteinView/proteinResidueView/;
-					if ($colnames{$ptm_type}{$i} =~ /nP(\.\d+)\-([\.\d]+)/){
-						my $xlabel = '';
-						if ($2 != 1){
-							$xlabel = $url . "0$1<=nP<0$2</a>";
-						}else{
-							$xlabel = $url . "nP>=0$1</a>";
+						$headings->[0] =~s/^\|//;
+						foreach my $row (@data){
+							my @elms = split(/\|/, $row->[0]);
+							$row->[0] = $elms[1]; 
+							my $mapping_id = $elms[0];
+							my $uniprot_name_contraint = '';
+							if ($row->[0] =~ /Core/i && $build_path =~ /burgdorferi/i ){
+								$uniprot_name_contraint = '&uniprot_name_constraint=%5BA-Z%5D%25';
+							}
+							## add link to col5
+							if ($mapping_id =~ /^\d+$/){						
+								$row->[5] = "<a href='$missing_prot_url$2&mapping_id=$mapping_id&atlas_build_id=$build_id".
+									"&peptideatlas_category_constraint=15&redundancy_constraint=on&".
+									"$uniprot_name_contraint' ".
+									"target='_blank' title='get missing proteins'>$row->[5]</a>" if ($row->[5] > 0);
+							}
+							$row->[4] .= '%';
 						}
-						push @{$ptm_plot_data{$ptm_type}{data}{$col2residue{$ptm_type}{$i}}},["$xlabel",$val];
-					}elsif($colnames{$ptm_type}{$i} =~ /no-choice/){
-						push @{$ptm_plot_data{$ptm_type}{data}{$col2residue{$ptm_type}{$i}}},["$url$colnames{$ptm_type}{$i}</a>",$val];
 					}
-	      }
-	      $ptm_plot_data{label} = $proteome;
-	    }
-	    my $n = scalar @$row;
-	    if ($counter == 0){
-	      for my $i (1..$n-1){
-					push @{$column_align{$pre_table}}, 'center';
-	      }
-	    } 
-	    $counter++;
-	  }
-	}
-	$download_table = 1 if ($pre_table eq 'dataset_contrib_table');
-	my $plot_html = '';
-	my $tname = '';
-	my $ptm_chart = '';
-	if ($pre_table =~ /ptm_coverage/ && %ptm_plot_data){
-	  my $counter = 0;
-	  $plot_html = qq~<div class="tab">
+				}elsif ($pre_table eq 'mass_modifications'){
+           foreach my $row (@data){
+             my $modification_name = $row->[0];
+             $modification_name =~ s/^n(.*)/$1-/;
+             $modification_name =~ s/c(.*)$/-$1/; 
+             $modification_name =~ s/([\[\]])/\\$1/g;
+             $row->[1] = "<a href='$CGI_BASE_DIR/PeptideAtlas/GetPeptides?modified_peptide_sequence_constraint=%".
+                         $modification_name . '%&' .
+                         "atlas_build_id=$build_id&display_options=ShowModifications&action=QUERY' ".
+                         "target='_blank'>$row->[1]</a>";
+           }
+        }
+				add_url (table_id => $pre_table,
+					 data_ref=>\@data,
+					 column_name_ref => $headings,
+					 build_id => $build_id,
+					 align => $column_align{$pre_table},
+						) if ($pre_table !~ /ptm_coverage/);
+	
+				if ($pre_table eq 'exp_contrib_table'){
+					if ($headings->[1] eq 'Experiment Annotation'){
+						$anno=1;
+					}
+					@sample_array =  map { [@$_] } @data;
+					@column_names = @$headings;
+					## remove category id column 
+					my $n = $#column_names;
+					if ($column_names[$n] eq 'sample_category_id'){
+						foreach my $row (@data){ 
+							splice @$row, $n;
+						}
+						splice @$headings, $n;
+					}
+					$download_table =1;
+				}
+
+				my %ptm_plot_data =();
+				my %ptm_table_headings = ();
+				my %ptm_table_data = ();
+				if ($pre_table =~ /ptm_coverage/){
+					my $counter = 0;
+					my %colnames = ();
+					my %col2residue = ();
+					my $residue = '';
+					my ($proteome, $ptm_type,);
+					foreach my $row (@data){
+						my $ptm_summary_url = "$CGI_BASE_DIR/PeptideAtlas/GetPTMSummary?atlas_build_id=$build_id".
+							"&display_options=proteinView&action=QUERY".
+							"&redundancy_constraint=on&proteome_component=";
+						if ($row->[0] =~ /Database/){
+							$row->[0] =~ /.*ptm_coverage_([^\|]+)\|(.*)/;
+							$ptm_type = $1;
+							$row->[0] =~ s/.*\|//;
+							push @{$ptm_table_headings{$ptm_type}}, $row;
+							for (my $i=1; $i < @$row; $i++){
+								if ($row->[$i] =~ /^total_(\w)_.*$/){
+									$residue = $1;
+								}
+								my $colname = $row->[$i];
+								$colname =~ s/_\w_sites/_sites/;
+								$colnames{$ptm_type}{$i} = $colname;
+								$col2residue{$ptm_type}{$i} = $residue;
+							} 
+							next;
+						}
+						push @{$ptm_table_data{$ptm_type}}, $row;
+
+						$row->[0] =~ /^ptm_coverage_([^\|]+)\|([^\|]+).*/;
+						$proteome = $2;
+						$ptm_type = $1;
+						## add link to col1
+						if ($row->[0]=~ /^ptm_coverage_[^\|]+\|([^\|]+)\|(.*)$/){
+							$ptm_summary_url = "$ptm_summary_url$2";
+							$row->[0] = "<a href='$ptm_summary_url\&ptm_type=$ptm_type' target='_blank' title='get ptm protein list'>$1</a>";
+						}else{
+							$row->[0] = $proteome;
+						}
+						if ($proteome =~ /(core|^Araport11$|^NeXtProt$)/i && ! $ptm_plot_data{$ptm_type}{data} ){
+							my %probability_constraint =  ('nP.80-.95' => 1,
+																						 'nP.95-.99' => 2,
+																						 'nP.99-1' => 3,
+																						 'no-choice' => 4);
+							foreach my $i(1..scalar @$row -1){ 
+								my $val =  $row->[$i];
+								$val =~ s/\s.*//;
+								$val =~ s/,//g;
+								my $url = '<a href="' . $ptm_summary_url . 
+													"&ptm_type=$ptm_type&probability_constraint=$probability_constraint{$colnames{$ptm_type}{$i}}\">";
+								$url =~ s/proteinView/proteinResidueView/;
+								if ($colnames{$ptm_type}{$i} =~ /nP(\.\d+)\-([\.\d]+)/){
+									my $xlabel = '';
+									if ($2 != 1){
+										$xlabel = $url . "0$1<=nP<0$2</a>";
+									}else{
+										$xlabel = $url . "nP>=0$1</a>";
+									}
+									push @{$ptm_plot_data{$ptm_type}{data}{$col2residue{$ptm_type}{$i}}},["$xlabel",$val];
+								}elsif($colnames{$ptm_type}{$i} =~ /no-choice/){
+									push @{$ptm_plot_data{$ptm_type}{data}{$col2residue{$ptm_type}{$i}}},["$url$colnames{$ptm_type}{$i}</a>",$val];
+								}
+							}
+							$ptm_plot_data{label} = $proteome;
+						}
+						my $n = scalar @$row;
+						if ($counter == 0){
+							for my $i (1..$n-1){
+								push @{$column_align{$pre_table}}, 'center';
+							}
+						} 
+						$counter++;
+					}
+				}
+				$download_table = 1 if ($pre_table eq 'dataset_contrib_table');
+				my $plot_html = '';
+				my $tname = '';
+				my $ptm_chart = '';
+				if ($pre_table =~ /ptm_coverage/ && %ptm_plot_data){
+					my $counter = 0;
+					$plot_html = qq~<div class="tab">
 										<style>
 										/* Style the tab */
 										.tab {
@@ -1821,31 +1834,43 @@ sub generate_html_from_file {
 									}
 								 </script>
            ~;
-	}
-	if ($pre_table =~ /ptm_coverage/){
-    my $ptm_table_help = $atlas->get_table_help(column_titles_ref=>[qw(nP.95-.99 nP.99-1 no-choice)]);
-	  $html = $sbeams->make_toggle_section(
-	    neutraltext =>"PTM Coverage",
-	    sticky => 1,
-	    barlink => 1,
-	    visible => 1,
-	    name => "ptm_div",
-	    content => "$ptm_table_help<TABLE><TR><TD COLSPAN='5'>$plot_html\n$ptm_chart</TD></TR></TABLE>",
-	      );
-	}else{
-	  $html = $atlas->create_table (data => \@data,
-					column_names=> $headings,
-					table_name => $table_names{$pre_table},
-					table_id => $pre_table,
-					nowrap => \@noWrap,
-					width => $table_width, 
-					align => $column_align{$pre_table}, 
-					sortable => 0,
-					plot_html => $plot_html,
-					download_table=> $download_table,
-	      );
-	}
-	print "$html";
+				}
+				if ($pre_table =~ /ptm_coverage/){
+					my $ptm_table_help = $atlas->get_table_help(column_titles_ref=>[qw(nP.95-.99 nP.99-1 no-choice)]);
+					$html = $sbeams->make_toggle_section(
+						neutraltext =>"PTM Coverage",
+						sticky => 1,
+						barlink => 1,
+						visible => 1,
+						name => "ptm_div",
+						content => "$ptm_table_help<TABLE><TR><TD COLSPAN='5'>$plot_html\n$ptm_chart</TD></TR></TABLE>",
+							);
+				}elsif($pre_table =~ /mass_modification/){
+          $html = $atlas->create_table (data => \@data,
+                column_names=> $headings,
+                table_name => $table_names{$pre_table},
+                table_id => $pre_table,
+                nowrap => \@noWrap,
+                width => $table_width,
+                align => $column_align{$pre_table},
+                sortable => 1,
+                default => 'N Obs',
+                download_table=> $download_table,
+              );
+        }else{
+					$html = $atlas->create_table (data => \@data,
+								column_names=> $headings,
+								table_name => $table_names{$pre_table},
+								table_id => $pre_table,
+								nowrap => \@noWrap,
+								width => $table_width, 
+								align => $column_align{$pre_table}, 
+								sortable => 0,
+								plot_html => $plot_html,
+								download_table=> $download_table,
+							);
+				}
+				print "$html";
       }
       $html ='';
       @data = (); 
@@ -1943,49 +1968,49 @@ sub add_url {
           my $annotation_url='';
           $repository_id = $row->[$i];
           ($row->[$i], $annotation_url) = $atlas->get_dataset_url ($row->[$i]);         
-	  $anno = 1 if ($annotation_url ne '');
-	  push @annotation_urls, $annotation_url;
+					$anno = 1 if ($annotation_url ne '');
+					push @annotation_urls, $annotation_url;
         }elsif($cols{$i} =~ /Experiment Tag/){
-	  if ($exp_id_idx){
-	    $row->[$i] = '<a href="https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/ManageTable.cgi?TABLE_NAME=AT_SAMPLE&sample_id=' .
-		$row->[$exp_id_idx] . '">'. $row->[$i] ."</a>";
-	  }
+					if ($exp_id_idx){
+						$row->[$i] = '<a href="https://db.systemsbiology.net/sbeams/cgi/PeptideAtlas/ManageTable.cgi?TABLE_NAME=AT_SAMPLE&sample_id=' .
+					$row->[$exp_id_idx] . '">'. $row->[$i] ."</a>";
+					}
         }elsif($cols{$i} =~ /Pubmed/){
           my @ids = split(",", $row->[$i]);
           $row->[$i] = '';
-	  foreach my $id(@ids){
-	    if ($id =~ /^\d+$/){
-	      $row->[$i] .= "<a href='http://www.ncbi.nlm.nih.gov/pubmed/?term=$id' target='_blank'>$id</a>,";
-	    }else{
-	      $row->[$i] .= "<a href='https://doi.org/$id' target='_blank'>$id</a>,";
-	    }
-	  }
+					foreach my $id(@ids){
+						if ($id =~ /^\d+$/){
+							$row->[$i] .= "<a href='http://www.ncbi.nlm.nih.gov/pubmed/?term=$id' target='_blank'>$id</a>,";
+						}else{
+							$row->[$i] .= "<a href='https://doi.org/$id' target='_blank'>$id</a>,";
+						}
+					}
           $row->[$i] =~ s/,$//;
         }elsif ($cols{$i} =~ /(^Canonical$|noncore|Indistinguish|Representative|Marginally|Weak|Insufficient|Subsumed)/i){
           my $level_id = $protein_level_ids{lc($cols{$i})};
           my $level_name = $cols{$i};
-	  my $constraint = '';
-	  if($level_name =~ /^indistinguishable$/i){
-	    $constraint = "redundancy_constraint=1";
-	  }elsif ($level_name =~ /(subsumbed_by|identical)/i){
-	    $constraint = "redundancy_constraint=$level_id";
-	  }else{
-	    $constraint = "presence_level_constraint=$level_id&redundancy_constraint=4";
-	  }
+					my $constraint = '';
+					if($level_name =~ /^indistinguishable$/i){
+						$constraint = "redundancy_constraint=1";
+					}elsif ($level_name =~ /(subsumbed_by|identical)/i){
+						$constraint = "redundancy_constraint=$level_id";
+					}else{
+						$constraint = "presence_level_constraint=$level_id&redundancy_constraint=4";
+					}
           if ($repository_id){
             if ($table_id eq 'dataset_protein_info'){ 
-	      $row->[$i] = "<a href='$CGI_BASE_DIR/PeptideAtlas/GetProteins?atlas_build_id=$build_id&dataset_id=$repository_id&$constraint&apply_action=QUERY' target='_blank'>$row->[$i]</a>";
+							$row->[$i] = "<a href='$CGI_BASE_DIR/PeptideAtlas/GetProteins?atlas_build_id=$build_id&dataset_id=$repository_id&$constraint&apply_action=QUERY' target='_blank'>$row->[$i]</a>";
             }elsif($table_id eq 'dataset_spec_protein_info'){
               $row->[$i] = "<a href='$CGI_BASE_DIR/PeptideAtlas/GetProteins?atlas_build_id=$build_id&dataset_specific_id=$repository_id&biosequence_name_constraint=!DECOY%&$constraint&apply_action=QUERY' target='_blank'>$row->[$i]</a>";
             }
           }
         }elsif($cols{$i} eq 'Unique All Proteins' and $table_id eq 'exp_contrib_table'){
-	  $row->[$i] = "<a href='$CGI_BASE_DIR/PeptideAtlas/GetProteins?atlas_build_id=$build_id&".
-	      "sample_specific_id=$row->[$exp_id_idx]&apply_action=QUERY' target='_blank'>$row->[$i]</a>";
+					$row->[$i] = "<a href='$CGI_BASE_DIR/PeptideAtlas/GetProteins?atlas_build_id=$build_id&".
+							"sample_specific_id=$row->[$exp_id_idx]&apply_action=QUERY' target='_blank'>$row->[$i]</a>";
         }elsif($cols{$i} eq 'Unique Canonical Proteins' && $table_id eq 'exp_contrib_table'){
-	  $row->[$i] = "<a href='$CGI_BASE_DIR/PeptideAtlas/GetProteins?atlas_build_id=$build_id&".
-	      'presence_level_constraint=1&redundancy_constraint=4&' .
-	      "sample_specific_id=$row->[$exp_id_idx]&apply_action=QUERY' target='_blank'>$row->[$i]</a>";
+					$row->[$i] = "<a href='$CGI_BASE_DIR/PeptideAtlas/GetProteins?atlas_build_id=$build_id&".
+							'presence_level_constraint=1&redundancy_constraint=4&' .
+							"sample_specific_id=$row->[$exp_id_idx]&apply_action=QUERY' target='_blank'>$row->[$i]</a>";
 
         }
       }##cols[$i]

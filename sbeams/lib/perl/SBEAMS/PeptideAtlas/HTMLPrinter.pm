@@ -3827,11 +3827,22 @@ sub create_table {
   my @noWrapCol = ();
   my $nowrap = $args{nowrap} || \@noWrapCol; 
   my $download_table = $args{download_table} || 0;
-  unshift @$data, $column_names;
+  my $default_sort_col = $args{default}  || '';
+  if ($sortable){
+    my @sort_headings = ();
+    foreach my $col (@$column_names){
+       push @sort_headings, $col, '';
+    }
+    
+    unshift @$data, $self->make_sort_headings( headings => \@sort_headings, default => $default_sort_col );
+  }else{
+    unshift @$data, $column_names;
+  }
+ 
   my $table = $self->encodeSectionTable(unified_widgets => 1,
                               rows => $data,
                               header => 1,
-			      header_sticky => 1,
+															header_sticky => 1,
                               bkg_interval => 3,
                               set_download => $download_table,
                               nowrap => $nowrap,
@@ -3840,6 +3851,7 @@ sub create_table {
                               width => $table_width ,
                               rows_to_show => $rows_to_show, 
                               sortable => $sortable );
+
 
   my $heading_info = $self->get_table_help(column_titles_ref=> $column_names);
   my $html = $sbeams->make_toggle_section(
