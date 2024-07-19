@@ -483,16 +483,27 @@ sub handle_request {
     ["resource_url","SKL.resource_url","resource_url"],
     ["organism_id","O.organism_id","organism_id"],
     ["organism_name","O.organism_name","organism_name"],
+  );
+  if ($parameters{organism_name} !~ /any/i){
+    push @column_array, (
     ["presence_level","(CASE WHEN PROTLEVEL.presence_level is NULL THEN 'not_detected' ELSE PROTLEVEL.presence_level END)", "Protein Level"],
     ["resource_gene_name","SKE_GENE.resource_gene_name", "Gene Name"],
     ["resource_gene_symbol","SKE_GENE.resource_gene_symbol", "Gene Symbol"],
-    ["search_key_id", "SKE.search_key_id", "search_key_id"],
-  );
+    );
+  }
+  push @column_array, (
+    ["search_key_id", "SKE.search_key_id", "search_key_id"]
+    );
+
+
   push @column_array, ["match_type","'exact_match'", "match_type"];
-  if ($parameters{pa_accession} =~ /on/i || $parameters{sequence} =~ /on/i){
+  if (($parameters{pa_accession} =~ /on/i || $parameters{sequence} =~ /on/i) && $parameters{organism_name} !~ /any/i){
     push @column_array, ["matched_protein_name","BS_PM.biosequence_name", "Protein Name"];
   }
-  push @column_array, ["row_number","ROW_NUMBER() OVER(PARTITION BY SKE.search_key_name ORDER BY PRESENCE_LEVEL_ORDER.id)", "row_number"];
+
+  if ($parameters{organism_name} !~ /any/i){
+    push @column_array, ["row_number","ROW_NUMBER() OVER(PARTITION BY SKE.search_key_name ORDER BY PRESENCE_LEVEL_ORDER.id)", "row_number"];
+  }
 
   #### Build the columns part of the SQL statement
   my %colnameidx = ();
@@ -658,35 +669,49 @@ sub handle_request {
 				 ~;
      }
    }
+
 	 my $where_clause = qq~
 				WHERE 1 = 1
 					$search_key_clause
 					$search_types_clause
 					AND SKL.atlas_build_id IN ( $atlas_build_ids )
 					ORDER BY 
-          SKE.search_key_name,
-          PRESENCE_LEVEL_ORDER.id
+          SKE.search_key_name
 	 ~;
 
-	 $sql = qq~
-      SELECT TOP 501 RESULT.* 
-				FROM (
-				$select_sql
-				JOIN 
+   $where_clause .= ", PRESENCE_LEVEL_ORDER.id " if ($parameters{organism_name} !~ /any/i );
+
+   if ($parameters{organism_name} !~ /any/i ){
+		 $sql = qq~
+				SELECT TOP 501 RESULT.* 
+					FROM (
+					$select_sql
+					JOIN 
+					$presence_level_order
+					ON (LEFT(PROTLEVEL.presence_level, CHARINDEX(' ', PROTLEVEL.presence_level + ' ') - 1) = PRESENCE_LEVEL_ORDER.name)
+						 OR PROTLEVEL.presence_level is null and PRESENCE_LEVEL_ORDER.name ='not_detected' 
+					$where_clause
+					) RESULT
+				JOIN
 				$presence_level_order
-				ON (LEFT(PROTLEVEL.presence_level, CHARINDEX(' ', PROTLEVEL.presence_level + ' ') - 1) = PRESENCE_LEVEL_ORDER.name)
-           OR PROTLEVEL.presence_level is null and PRESENCE_LEVEL_ORDER.name ='not_detected' 
-				$where_clause
-				) RESULT
-      JOIN
-      $presence_level_order
-      ON (LEFT(RESULT.presence_level, CHARINDEX(' ', RESULT.presence_level + ' ') - 1) = PRESENCE_LEVEL_ORDER.name)
-			WHERE RESULT.ROW_NUMBER=1
-   ~;
-   if ($parameters{pa_accession} =~ /on/i || $parameters{sequence} =~ /on/i){
-      $sql = "$sql\nORDER BY RESULT.RESOURCE_N_MATCHES DESC, PRESENCE_LEVEL_ORDER.ID,RESULT.SEARCH_KEY_NAME";
+				ON (LEFT(RESULT.presence_level, CHARINDEX(' ', RESULT.presence_level + ' ') - 1) = PRESENCE_LEVEL_ORDER.name)
+				WHERE RESULT.ROW_NUMBER=1
+		 ~;
    }else{
-      $sql = "$sql\nORDER BY PRESENCE_LEVEL_ORDER.ID,RESULT.RESOURCE_N_MATCHES DESC,RESULT.SEARCH_KEY_NAME";
+      $sql = qq~
+         SELECT TOP 501 RESULT.*
+         
+         FROM ($select_sql
+               $where_clause
+         )RESULT
+      ~;
+   }
+   if ($parameters{organism_name} !~ /any/i){   
+		 if ($parameters{pa_accession} =~ /on/i || $parameters{sequence} =~ /on/i){
+				$sql = "$sql\nORDER BY RESULT.RESOURCE_N_MATCHES DESC, PRESENCE_LEVEL_ORDER.ID,RESULT.SEARCH_KEY_NAME";
+		 }else{
+				$sql = "$sql\nORDER BY PRESENCE_LEVEL_ORDER.ID,RESULT.RESOURCE_N_MATCHES DESC,RESULT.SEARCH_KEY_NAME";
+		 }
    } 
 
    $sbeams->display_sql(sql=>$sql) if ($show_sql);
@@ -1451,7 +1476,6 @@ sub getBuildTypeSelection {
   unless ($matched_parameter) {
     $build_type_name = 'Human';
   }
-
 
   #### Get the atlas_build_ids
   my $atlas_build_ids = $atlas_build_ids{$build_type_name};
